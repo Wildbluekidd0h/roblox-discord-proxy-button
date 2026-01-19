@@ -828,11 +828,26 @@ client.on('guildMemberAdd', async (member) => {
     }
 });
 
+// Track processed messages to prevent duplicates
+const processedMessages = new Set();
+
 // Handle DM messages for verification
 client.on('messageCreate', async (message) => {
     // Ignore bot messages and non-DM messages
     if (message.author.bot) return;
     if (message.guild) return; // Only handle DMs
+    
+    // Prevent processing the same message twice
+    if (processedMessages.has(message.id)) return;
+    processedMessages.add(message.id);
+    
+    // Clean up old message IDs (keep last 100)
+    if (processedMessages.size > 100) {
+        const arr = Array.from(processedMessages);
+        for (let i = 0; i < 50; i++) {
+            processedMessages.delete(arr[i]);
+        }
+    }
     
     const pending = pendingManualVerifications.get(message.author.id);
     
