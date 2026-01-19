@@ -50,6 +50,25 @@ const HOW_TO_VERIFY_CHANNEL_ID = '1462633444407513118';
 // Store pending manual verifications
 const pendingManualVerifications = new Map();
 
+// DM Verification Questions
+const VERIFICATION_QUESTIONS = [
+    { key: 'birthdate', question: '**Question 1/15:** What is your birthdate? (MM/DD/YYYY or DD/MM/YYYY)\n*We use this to confirm your age. You must be 13 or older to join.*' },
+    { key: 'nextBirthdayAge', question: '**Question 2/15:** How old will you be on your next birthday?' },
+    { key: 'voreServers', question: '**Question 3/15:** List any vore-related servers you are currently in.\n*Include server names or links. If none, explain why you joined this server.*' },
+    { key: 'whyJoin', question: '**Question 4/15:** Why did you decide to join Forest Park Hangout?' },
+    { key: 'interests', question: '**Question 5/15:** What about this server interests you?' },
+    { key: 'rulesQuote', question: '**Question 6/15:** Quote 3 rules from our server and explain what they mean in your own words.\n*This shows you\'ve read and understand the rules.*' },
+    { key: 'howFound', question: '**Question 7/15:** How did you find this server?\n*Be specific: invite from a friend, Discord search, another server, etc.*' },
+    { key: 'timezone', question: '**Question 8/15:** What timezone are you in?\n*e.g. EST, PST, GMT, UTC+2*' },
+    { key: 'bannedBefore', question: '**Question 9/15:** Have you been banned from any Discord servers before?\n*If yes, explain which servers and why. If no, just say No.*' },
+    { key: 'altAccounts', question: '**Question 10/15:** Do you have any alt Discord accounts?\n*If yes, list them. If no, just say No.*' },
+    { key: 'voreMeaning', question: '**Question 11/15:** (Optional) What does vore mean to you?\n*You can skip this by typing "skip"*' },
+    { key: 'robloxUsername', question: '**Question 12/15:** What is your Roblox username?\n*Your actual username, not display name. We will verify you own this account.*' },
+    { key: 'playedBefore', question: '**Question 13/15:** Have you played Forest Park Hangout on Roblox before?\n*If yes, what features or areas have you explored?*' },
+    { key: 'comfortableRules', question: '**Question 14/15:** Are you comfortable following all server rules?\n*Explain how you make sure to follow community rules.*' },
+    { key: 'experienceHoping', question: '**Question 15/15:** What kind of experience are you hoping to have here?\n*e.g. roleplay, social hangout, exploration, events...*' }
+];
+
 // Create Discord client
 const client = new Client({
     intents: [
@@ -802,6 +821,128 @@ client.on('guildMemberAdd', async (member) => {
     } catch (dmError) {
         console.error(`Failed to send welcome DM to ${member.user.tag}:`, dmError.message);
     }
+});
+
+// Handle DM messages for verification
+client.on('messageCreate', async (message) => {
+    // Ignore bot messages and non-DM messages
+    if (message.author.bot) return;
+    if (message.guild) return; // Only handle DMs
+    
+    const pending = pendingManualVerifications.get(message.author.id);
+    
+    // Check if user has an active verification in progress
+    if (!pending || pending.step !== 'answering') return;
+    
+    const questionIndex = pending.currentQuestion;
+    const answer = message.content.trim();
+    
+    // Handle skip for optional questions
+    if (VERIFICATION_QUESTIONS[questionIndex].key === 'voreMeaning' && answer.toLowerCase() === 'skip') {
+        pending.answers[VERIFICATION_QUESTIONS[questionIndex].key] = 'Skipped';
+    } else {
+        pending.answers[VERIFICATION_QUESTIONS[questionIndex].key] = answer;
+    }
+    
+    // Move to next question
+    pending.currentQuestion++;
+    
+    // Check if all questions are answered
+    if (pending.currentQuestion >= VERIFICATION_QUESTIONS.length) {
+        // All questions answered - now verify Roblox account
+        pending.step = 'roblox_verify';
+        pendingManualVerifications.set(message.author.id, pending);
+        
+        await message.reply('✅ **All questions answered!** Now verifying your Roblox account...');
+        
+        // Look up Roblox user
+        const robloxUser = await lookupRobloxUser(pending.answers.robloxUsername);
+        
+        if (!robloxUser) {
+            await message.channel.send(`❌ Could not find Roblox user **${pending.answers.robloxUsername}**. Please start verification again with the correct username.`);
+            pendingManualVerifications.delete(message.author.id);
+            return;
+        }
+        
+        if (robloxUser.isBanned) {
+            await message.channel.send('❌ This Roblox account is banned and cannot be verified.');
+            pendingManualVerifications.delete(message.author.id);
+            return;
+        }
+        
+        // Check if account is at least 30 days old
+        if (robloxUser.created) {
+            const accountCreated = new Date(robloxUser.created);
+            const now = new Date();
+            const daysSinceCreation = Math.floor((now - accountCreated) / (1000 * 60 * 60 * 24));
+            
+            if (daysSinceCreation < 30) {
+                const daysRemaining = 30 - daysSinceCreation;
+                await message.channel.send(`❌ **Account Too New**\n\nYour Roblox account **${robloxUser.username}** was created ${daysSinceCreation} days ago.\n\nFor security reasons, Roblox accounts must be **at least 30 days old** to verify.\n\nPlease try again in **${daysRemaining} day${daysRemaining === 1 ? '' : 's'}**.`);
+                pendingManualVerifications.delete(message.author.id);
+                return;
+            }
+        }
+        
+        // Generate verification code
+        const verificationCode = generateVerificationCode();
+        pending.robloxUser = robloxUser;
+        pending.verificationCode = verificationCode;
+        pending.step = 'code_verify';
+        pendingManualVerifications.set(message.author.id, pending);
+        
+        // Auto-expire code after 15 minutes
+        setTimeout(() => {
+            const p = pendingManualVerifications.get(message.author.id);
+            if (p && p.verificationCode === verificationCode && p.step === 'code_verify') {
+                pendingManualVerifications.delete(message.author.id);
+                message.author.send('⏰ Your verification code has expired. Please start verification again.').catch(() => {});
+            }
+        }, 15 * 60 * 1000);
+        
+        const codeEmbed = new EmbedBuilder()
+            .setTitle('🔐 Verify Your Roblox Account')
+            .setDescription(`To prove you own **${robloxUser.username}**, add this code to your Roblox profile description:`)
+            .setColor(0x00d4ff)
+            .addFields(
+                { name: '📋 Your Verification Code', value: `\`\`\`${verificationCode}\`\`\``, inline: false },
+                { name: '📝 Instructions', value: 
+                    '1. Go to your [Roblox Profile Settings](https://www.roblox.com/my/account#!/info)\n' +
+                    '2. In the "About" section, paste the code above anywhere in your description\n' +
+                    '3. Save your profile\n' +
+                    '4. Click the **"✅ I Added the Code"** button below\n\n' +
+                    '*You can remove the code after verification*', inline: false },
+                { name: '⏰ Expires', value: 'This code expires in **15 minutes**', inline: true }
+            )
+            .setFooter({ text: `Verifying: ${robloxUser.username} (${robloxUser.id})` });
+        
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('dm_verify_code_check')
+                    .setLabel('✅ I Added the Code')
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId('dm_verify_code_cancel')
+                    .setLabel('❌ Cancel')
+                    .setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder()
+                    .setLabel('Open Roblox Profile')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(`https://www.roblox.com/users/${robloxUser.id}/profile`)
+            );
+        
+        await message.channel.send({ embeds: [codeEmbed], components: [row] });
+        return;
+    }
+    
+    // Send next question
+    pendingManualVerifications.set(message.author.id, pending);
+    
+    const nextQuestion = VERIFICATION_QUESTIONS[pending.currentQuestion];
+    const progressBar = `[${pending.currentQuestion + 1}/${VERIFICATION_QUESTIONS.length}]`;
+    
+    await message.channel.send(`${nextQuestion.question}`);
 });
 
 // Post verification instructions to the how-to-verify channel on ready
@@ -1688,74 +1829,195 @@ client.on('interactionCreate', async (interaction) => {
         // Check if already has a pending verification
         const existingPending = pendingManualVerifications.get(interaction.user.id);
         if (existingPending) {
-            if (existingPending.step === 4) {
-                // Already submitted to staff
+            if (existingPending.step === 'submitted') {
                 await interaction.reply({
                     content: '⏳ You already have a pending verification. Please wait for staff to review it.',
                     ephemeral: true
                 });
-            } else if (existingPending.step === 3) {
-                // In code verification phase
+                return;
+            } else if (existingPending.step === 'code_verify') {
                 await interaction.reply({
-                    content: '⏳ You have an ongoing verification. Please complete the Roblox profile code step or cancel it first.',
+                    content: '⏳ You have an ongoing verification. Please check your DMs and complete the Roblox profile code step.',
                     ephemeral: true
                 });
-            } else {
-                // In step 1 or 2, allow restart
-                pendingManualVerifications.delete(interaction.user.id);
+                return;
+            } else if (existingPending.step === 'answering') {
+                await interaction.reply({
+                    content: '⏳ You have an ongoing verification. Please check your DMs and answer the questions there.',
+                    ephemeral: true
+                });
+                return;
             }
-            if (existingPending.step >= 3) return;
         }
         
-        // Show modal with verification questions
-        const modal = new ModalBuilder()
-            .setCustomId('manual_verification_modal')
-            .setTitle('Verification - Part 1 of 3');
+        // Start DM verification
+        try {
+            // Initialize verification data
+            pendingManualVerifications.set(interaction.user.id, {
+                odId: interaction.user.id,
+                username: interaction.user.username,
+                tag: interaction.user.tag,
+                step: 'answering',
+                currentQuestion: 0,
+                answers: {},
+                startedAt: new Date().toISOString()
+            });
+            
+            // Send first question via DM
+            const startEmbed = new EmbedBuilder()
+                .setTitle('🌲 Forest Park Hangout - Verification Started')
+                .setDescription('Thank you for starting the verification process!\n\nI will ask you **15 questions** one at a time. Simply reply to each message with your answer.\n\n**Important:**\n• Answer honestly and completely\n• For optional questions, type "skip" to skip\n• Take your time - there\'s no rush')
+                .setColor(0x87CEEB)
+                .setFooter({ text: 'Your answers are only visible to staff' });
+            
+            await interaction.user.send({ embeds: [startEmbed] });
+            
+            // Send first question
+            const firstQuestion = VERIFICATION_QUESTIONS[0];
+            await interaction.user.send(firstQuestion.question);
+            
+            await interaction.reply({
+                content: '✅ **Verification started!** Check your DMs to answer the verification questions.',
+                ephemeral: true
+            });
+            
+        } catch (dmError) {
+            console.error(`Could not DM ${interaction.user.tag}:`, dmError.message);
+            pendingManualVerifications.delete(interaction.user.id);
+            await interaction.reply({
+                content: '❌ **Could not send you a DM!** Please make sure your DMs are open for this server, then try again.\n\n**How to enable DMs:**\n1. Right-click the server icon\n2. Click "Privacy Settings"\n3. Enable "Direct Messages"',
+                ephemeral: true
+            });
+        }
+        return;
+    }
+    
+    // Handle DM verification code check
+    if (customId === 'dm_verify_code_check') {
+        const pending = pendingManualVerifications.get(interaction.user.id);
         
-        const birthdateInput = new TextInputBuilder()
-            .setCustomId('birthdate')
-            .setLabel('1. What is your birthdate? (MM/DD/YYYY)')
-            .setPlaceholder('e.g. 01/15/2000')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
+        if (!pending || pending.step !== 'code_verify') {
+            await interaction.reply({
+                content: '❌ Your verification session has expired. Please start again by clicking "Start Verification" in the server.',
+                ephemeral: true
+            });
+            return;
+        }
         
-        const ageInput = new TextInputBuilder()
-            .setCustomId('next_birthday_age')
-            .setLabel('2. How old will you be on your next birthday?')
-            .setPlaceholder('e.g. 21')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
+        await interaction.deferUpdate();
         
-        const serversInput = new TextInputBuilder()
-            .setCustomId('vore_servers')
-            .setLabel('3. List vore-related servers you\'re in')
-            .setPlaceholder('Server names or links. If none, explain why you joined.')
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(true);
+        // Check if the code is in their Roblox profile
+        const codeFound = await checkRobloxProfileCode(pending.robloxUser.id, pending.verificationCode);
         
-        const whyJoinInput = new TextInputBuilder()
-            .setCustomId('why_join')
-            .setLabel('4. Why did you join? What interests you?')
-            .setPlaceholder('Why did you decide to join Forest Park Hangout?')
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(true);
+        if (!codeFound) {
+            const retryEmbed = new EmbedBuilder()
+                .setTitle('❌ Code Not Found')
+                .setDescription('Could not find the verification code in your Roblox profile description.')
+                .setColor(0xff0000)
+                .addFields(
+                    { name: '📋 Your Code', value: `\`\`\`${pending.verificationCode}\`\`\``, inline: false },
+                    { name: '💡 Tips', value: 
+                        '• Make sure you saved your profile after adding the code\n' +
+                        '• The code must be in your "About" description\n' +
+                        '• Copy the exact code (no extra spaces)\n' +
+                        '• Wait a few seconds after saving, then try again', inline: false }
+                )
+                .setFooter({ text: 'Click "I Added the Code" again after fixing' });
+            
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('dm_verify_code_check')
+                        .setLabel('✅ I Added the Code')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId('dm_verify_code_cancel')
+                        .setLabel('❌ Cancel')
+                        .setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder()
+                        .setLabel('Open Roblox Profile')
+                        .setStyle(ButtonStyle.Link)
+                        .setURL(`https://www.roblox.com/users/${pending.robloxUser.id}/profile`)
+                );
+            
+            await interaction.editReply({ embeds: [retryEmbed], components: [row] });
+            return;
+        }
         
-        const rulesInput = new TextInputBuilder()
-            .setCustomId('rules_quote')
-            .setLabel('5. Quote 3 rules & explain them + how you found us')
-            .setPlaceholder('Quote 3 rules, explain them, and how you found this server')
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(true);
+        // SUCCESS! Send to staff for review
+        pending.step = 'submitted';
+        pending.robloxVerified = true;
+        pending.submittedAt = new Date().toISOString();
+        pendingManualVerifications.set(interaction.user.id, pending);
         
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(birthdateInput),
-            new ActionRowBuilder().addComponents(ageInput),
-            new ActionRowBuilder().addComponents(serversInput),
-            new ActionRowBuilder().addComponents(whyJoinInput),
-            new ActionRowBuilder().addComponents(rulesInput)
-        );
+        console.log(`✓ Roblox verified for ${interaction.user.tag}, sending to staff`);
         
-        await interaction.showModal(modal);
+        // Send to verification log channel
+        try {
+            const logChannel = await client.channels.fetch(VERIFICATION_LOG_CHANNEL_ID);
+            
+            const logEmbed = new EmbedBuilder()
+                .setTitle('📋 New Verification Request')
+                .setDescription(`**User:** <@${interaction.user.id}> (${pending.tag})\n\n✅ **Roblox Account Verified** - User proved ownership via profile code`)
+                .setColor(0xffaa00)
+                .addFields(
+                    { name: '🎂 Birthdate', value: pending.answers.birthdate || 'Not provided', inline: true },
+                    { name: '🔢 Age on Next Birthday', value: pending.answers.nextBirthdayAge || 'Not provided', inline: true },
+                    { name: '🌍 Timezone', value: pending.answers.timezone || 'Not provided', inline: true },
+                    { name: '🎮 Roblox Account (VERIFIED ✅)', value: `[${pending.robloxUser.username}](https://www.roblox.com/users/${pending.robloxUser.id}/profile) (${pending.robloxUser.id})`, inline: false },
+                    { name: '🌐 Vore-Related Servers', value: (pending.answers.voreServers || 'Not provided').substring(0, 1024) },
+                    { name: '❓ Why Join Forest Park?', value: (pending.answers.whyJoin || 'Not provided').substring(0, 1024) },
+                    { name: '💡 What Interests You?', value: (pending.answers.interests || 'Not provided').substring(0, 1024) },
+                    { name: '📜 Rules Quote & Explanation', value: (pending.answers.rulesQuote || 'Not provided').substring(0, 1024) },
+                    { name: '🔍 How Found This Server', value: (pending.answers.howFound || 'Not provided').substring(0, 1024) },
+                    { name: '⚠️ Been Banned From Servers?', value: (pending.answers.bannedBefore || 'Not provided').substring(0, 1024) },
+                    { name: '👥 Alt Discord Accounts?', value: (pending.answers.altAccounts || 'Not provided').substring(0, 1024) },
+                    { name: '💭 What Does Vore Mean to You?', value: (pending.answers.voreMeaning || 'Skipped').substring(0, 1024) },
+                    { name: '🏠 Played Forest Park Before?', value: (pending.answers.playedBefore || 'Not provided').substring(0, 1024) },
+                    { name: '✅ Comfortable Following Rules?', value: (pending.answers.comfortableRules || 'Not provided').substring(0, 1024) },
+                    { name: '🌟 Experience Hoping For', value: (pending.answers.experienceHoping || 'Not provided').substring(0, 1024) }
+                )
+                .setThumbnail(interaction.user.displayAvatarURL())
+                .setFooter({ text: `User ID: ${interaction.user.id} | Roblox verified via profile code` })
+                .setTimestamp();
+            
+            const actionRow = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`manual_verify_accept_${interaction.user.id}`)
+                        .setLabel('✅ Accept')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId(`manual_verify_deny_${interaction.user.id}`)
+                        .setLabel('❌ Deny')
+                        .setStyle(ButtonStyle.Danger)
+                );
+            
+            await logChannel.send({ embeds: [logEmbed], components: [actionRow] });
+            
+        } catch (logError) {
+            console.error('Failed to send to log channel:', logError.message);
+        }
+        
+        // Success message to user
+        const successEmbed = new EmbedBuilder()
+            .setTitle('✅ Verification Submitted!')
+            .setDescription(`Your Roblox account **${pending.robloxUser.username}** has been verified!\n\n**What happens next:**\n• Staff will now review your verification answers\n• You'll receive a DM when a decision is made\n• This usually takes a few hours\n\n*You can now remove the code from your Roblox profile.*`)
+            .setColor(0x00ff00)
+            .setFooter({ text: 'Thanks for verifying!' });
+        
+        await interaction.editReply({ embeds: [successEmbed], components: [] });
+        return;
+    }
+    
+    // Handle DM verification code cancel
+    if (customId === 'dm_verify_code_cancel') {
+        pendingManualVerifications.delete(interaction.user.id);
+        await interaction.update({
+            content: '❌ Verification cancelled. You can start again by clicking "Start Verification" in the server.',
+            embeds: [],
+            components: []
+        });
         return;
     }
     
