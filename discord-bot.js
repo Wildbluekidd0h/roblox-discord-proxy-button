@@ -37,6 +37,19 @@ const REQUIRE_MATCHING_DISPLAY_NAME = process.env.REQUIRE_MATCHING_DISPLAY_NAME 
 // Verification channel where the verify button will be posted
 const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID || process.env.DISCORD_VERIFICATION_CHANNEL_ID;
 
+// Role to give to new members when they join the server
+const AUTO_ROLE_ID = '1462613689168302183';
+
+// Additional role to give when verified (e.g., member role)
+const VERIFIED_MEMBER_ROLE_ID = '1462613966453739743';
+
+// Manual verification channels
+const VERIFICATION_LOG_CHANNEL_ID = '1386815060428722196';
+const HOW_TO_VERIFY_CHANNEL_ID = '1462633444407513118';
+
+// Store pending manual verifications
+const pendingManualVerifications = new Map();
+
 // Create Discord client
 const client = new Client({
     intents: [
@@ -752,7 +765,107 @@ client.once('ready', async () => {
             console.error('Failed to post verification message:', err.message);
         }
     }
+    
+    // Post manual verification instructions
+    await postVerificationInstructions();
 });
+
+// Auto-give role when someone joins the server
+client.on('guildMemberAdd', async (member) => {
+    console.log(`New member joined: ${member.user.tag}`);
+    
+    if (AUTO_ROLE_ID) {
+        try {
+            await member.roles.add(AUTO_ROLE_ID);
+            console.log(`✓ Gave auto-role to ${member.user.tag}`);
+        } catch (error) {
+            console.error(`Failed to give auto-role to ${member.user.tag}:`, error.message);
+        }
+    }
+    
+    // Send DM with verification instructions
+    try {
+        const welcomeEmbed = new EmbedBuilder()
+            .setTitle('🌲 Welcome to Forest Park Hangout - Manual Verification Required')
+            .setDescription('To keep our community safe and friendly, all visitors must complete verification before accessing the full server.\n\n**Please answer all the following questions honestly and completely.**')
+            .setColor(0x00d4ff)
+            .addFields(
+                { name: '📋 How to Verify', value: `Please go to <#${HOW_TO_VERIFY_CHANNEL_ID}> and click the **"Start Verification"** button to begin answering the verification questions.` },
+                { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
+                { name: '⚠️ Note', value: 'If your answers don\'t match or you appear underage, your verification will be denied.' }
+            )
+            .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' })
+            .setTimestamp();
+        
+        await member.send({ embeds: [welcomeEmbed] });
+        console.log(`✓ Sent welcome DM to ${member.user.tag}`);
+    } catch (dmError) {
+        console.error(`Failed to send welcome DM to ${member.user.tag}:`, dmError.message);
+    }
+});
+
+// Post verification instructions to the how-to-verify channel on ready
+async function postVerificationInstructions() {
+    if (!HOW_TO_VERIFY_CHANNEL_ID) return;
+    
+    try {
+        const channel = await client.channels.fetch(HOW_TO_VERIFY_CHANNEL_ID);
+        
+        // Check if we already have a verification message
+        const messages = await channel.messages.fetch({ limit: 10 });
+        const hasVerifyMessage = messages.some(m => 
+            m.author.id === client.user.id && 
+            m.components.length > 0 &&
+            m.components[0]?.components[0]?.customId === 'start_manual_verification'
+        );
+        
+        if (!hasVerifyMessage) {
+            const embed = new EmbedBuilder()
+                .setTitle('🌲 Welcome to Forest Park Hangout – Manual Verification Required')
+                .setDescription('To keep our community safe and friendly, all visitors must complete verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
+                .setColor(0x87CEEB)
+                .addFields(
+                    { name: '🔐 Part 1 - Identity & Age Verification:', value: 
+                        '1. What is your birthdate? (MM/DD/YYYY)\n' +
+                        '2. How old will you be on your next birthday?\n' +
+                        '3. List any vore-related servers you are currently in\n' +
+                        '4. Why did you decide to join Forest Park Hangout?\n' +
+                        '5. Quote 3 rules & explain them in your own words'
+                    },
+                    { name: '🔐 Part 2 - About You:', value: 
+                        '6. How did you find this server?\n' +
+                        '7. What timezone are you in?\n' +
+                        '8. Have you been banned from any Discord servers?\n' +
+                        '9. Do you have any alt Discord accounts?\n' +
+                        '10. (Optional) What does vore mean to you?'
+                    },
+                    { name: '🔐 Part 3 - Roblox & Final Questions:', value: 
+                        '11. What is your Roblox username?\n' +
+                        '12. Have you played Forest Park Hangout before?\n' +
+                        '13. Are you comfortable following all server rules?\n' +
+                        '14. What experience are you hoping to have?\n' +
+                        '15. Anything else you want staff to know?'
+                    },
+                    { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
+                    { name: '🚨 Note', value: 'If your answers don\'t match or you appear underage, your verification will be denied.\n\nIf you need help, ping <@&1386816989137211575>.' }
+                )
+                .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' });
+            
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('start_manual_verification')
+                        .setLabel('📝 Start Verification')
+                        .setStyle(ButtonStyle.Success)
+                );
+            
+            await channel.send({ embeds: [embed], components: [row] });
+            console.log('✓ Posted manual verification instructions to channel');
+        }
+    } catch (err) {
+        console.error('Failed to post verification instructions:', err.message);
+    }
+}
 
 // Function to look up Roblox user by username
 async function lookupRobloxUser(username) {
@@ -833,6 +946,264 @@ client.on('interactionCreate', async (interaction) => {
         // Handle Modal submissions (Roblox username input)
         if (interaction.type === InteractionType.ModalSubmit) {
             console.log(`Modal submitted: ${interaction.customId}`);
+            
+            // Handle Manual Verification Modal - Step 1
+            if (interaction.customId === 'manual_verification_modal') {
+                const birthdate = interaction.fields.getTextInputValue('birthdate');
+                const nextBirthdayAge = interaction.fields.getTextInputValue('next_birthday_age');
+                const voreServers = interaction.fields.getTextInputValue('vore_servers');
+                const whyJoin = interaction.fields.getTextInputValue('why_join');
+                const rulesQuote = interaction.fields.getTextInputValue('rules_quote');
+                
+                console.log(`Manual verification step 1 submitted by ${interaction.user.tag}`);
+                
+                // Store partial data for step 2
+                pendingManualVerifications.set(interaction.user.id, {
+                    odId: interaction.user.id,
+                    username: interaction.user.username,
+                    tag: interaction.user.tag,
+                    birthdate,
+                    nextBirthdayAge,
+                    voreServers,
+                    whyJoin,
+                    rulesQuote,
+                    step: 1
+                });
+                
+                // Show second modal with additional questions
+                const modal2 = new ModalBuilder()
+                    .setCustomId('manual_verification_modal_2')
+                    .setTitle('Verification - Part 2 of 3');
+                
+                const howFoundInput = new TextInputBuilder()
+                    .setCustomId('how_found')
+                    .setLabel('6. How did you find this server?')
+                    .setPlaceholder('Be specific: invite from friend, Discord search, another server...')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true);
+                
+                const timezoneInput = new TextInputBuilder()
+                    .setCustomId('timezone')
+                    .setLabel('7. What timezone are you in?')
+                    .setPlaceholder('e.g. EST, PST, GMT, UTC+2, etc.')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true);
+                
+                const bannedBeforeInput = new TextInputBuilder()
+                    .setCustomId('banned_before')
+                    .setLabel('8. Been banned from any Discord servers?')
+                    .setPlaceholder('If yes, explain which servers and why. If no, say No.')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true);
+                
+                const altAccountsInput = new TextInputBuilder()
+                    .setCustomId('alt_accounts')
+                    .setLabel('9. Do you have any alt Discord accounts?')
+                    .setPlaceholder('If yes, list them. If no, say No.')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true);
+                
+                const voreMeaningInput = new TextInputBuilder()
+                    .setCustomId('vore_meaning')
+                    .setLabel('10. (Optional) What does vore mean to you?')
+                    .setPlaceholder('Leave blank if you prefer not to answer')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(false);
+                
+                modal2.addComponents(
+                    new ActionRowBuilder().addComponents(howFoundInput),
+                    new ActionRowBuilder().addComponents(timezoneInput),
+                    new ActionRowBuilder().addComponents(bannedBeforeInput),
+                    new ActionRowBuilder().addComponents(altAccountsInput),
+                    new ActionRowBuilder().addComponents(voreMeaningInput)
+                );
+                
+                await interaction.showModal(modal2);
+                return;
+            }
+            
+            // Handle Manual Verification Modal - Step 2
+            if (interaction.customId === 'manual_verification_modal_2') {
+                const howFound = interaction.fields.getTextInputValue('how_found');
+                const timezone = interaction.fields.getTextInputValue('timezone');
+                const bannedBefore = interaction.fields.getTextInputValue('banned_before');
+                const altAccounts = interaction.fields.getTextInputValue('alt_accounts');
+                const voreMeaning = interaction.fields.getTextInputValue('vore_meaning') || 'Not provided';
+                
+                console.log(`Manual verification step 2 submitted by ${interaction.user.tag}`);
+                
+                // Get step 1 data
+                const step1Data = pendingManualVerifications.get(interaction.user.id);
+                
+                if (!step1Data || step1Data.step !== 1) {
+                    await interaction.reply({
+                        content: '❌ Your first step data was lost. Please start the verification again.',
+                        ephemeral: true
+                    });
+                    return;
+                }
+                
+                // Update with step 2 data
+                pendingManualVerifications.set(interaction.user.id, {
+                    ...step1Data,
+                    howFound,
+                    timezone,
+                    bannedBefore,
+                    altAccounts,
+                    voreMeaning,
+                    step: 2
+                });
+                
+                // Send a message with button to continue to Part 3 (can't show modal from modal)
+                const continueEmbed = new EmbedBuilder()
+                    .setTitle('✅ Part 2 Complete!')
+                    .setDescription('Great job! You\'re almost done. Click the button below to continue to the final part where you\'ll verify your Roblox account.')
+                    .setColor(0x00ff00)
+                    .addFields(
+                        { name: '📋 Part 3 Questions', value: 
+                            '• Your Roblox username\n' +
+                            '• If you\'ve played Forest Park before\n' +
+                            '• If you\'re comfortable with the rules\n' +
+                            '• What experience you\'re hoping for\n' +
+                            '• Anything else for staff'
+                        }
+                    )
+                    .setFooter({ text: 'Click Continue to finish your verification' });
+                
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('continue_to_part3')
+                            .setLabel('➡️ Continue to Part 3')
+                            .setStyle(ButtonStyle.Primary)
+                    );
+                
+                await interaction.reply({ embeds: [continueEmbed], components: [row], ephemeral: true });
+                return;
+            }
+            
+            // Handle Manual Verification Modal - Step 3
+            if (interaction.customId === 'manual_verification_modal_3') {
+                const robloxUsernameVerify = interaction.fields.getTextInputValue('roblox_username_verify');
+                const playedBefore = interaction.fields.getTextInputValue('played_before');
+                const comfortableRules = interaction.fields.getTextInputValue('comfortable_rules');
+                const experienceHoping = interaction.fields.getTextInputValue('experience_hoping');
+                const anythingElse = interaction.fields.getTextInputValue('anything_else') || 'Not provided';
+                
+                console.log(`Manual verification step 3 submitted by ${interaction.user.tag}`);
+                
+                // Get step 2 data
+                const step2Data = pendingManualVerifications.get(interaction.user.id);
+                
+                if (!step2Data || step2Data.step !== 2) {
+                    await interaction.reply({
+                        content: '❌ Your previous step data was lost. Please start the verification again.',
+                        ephemeral: true
+                    });
+                    return;
+                }
+                
+                await interaction.deferReply({ ephemeral: true });
+                
+                // Look up the Roblox user to verify they exist
+                const robloxUser = await lookupRobloxUser(robloxUsernameVerify);
+                
+                if (!robloxUser) {
+                    await interaction.editReply({
+                        content: `❌ Could not find Roblox user **${robloxUsernameVerify}**. Please check the spelling and start verification again.`
+                    });
+                    pendingManualVerifications.delete(interaction.user.id);
+                    return;
+                }
+                
+                if (robloxUser.isBanned) {
+                    await interaction.editReply({
+                        content: '❌ This Roblox account is banned and cannot be verified.'
+                    });
+                    pendingManualVerifications.delete(interaction.user.id);
+                    return;
+                }
+                
+                // Check if account is at least 30 days old
+                if (robloxUser.created) {
+                    const accountCreated = new Date(robloxUser.created);
+                    const now = new Date();
+                    const daysSinceCreation = Math.floor((now - accountCreated) / (1000 * 60 * 60 * 24));
+                    
+                    if (daysSinceCreation < 30) {
+                        const daysRemaining = 30 - daysSinceCreation;
+                        await interaction.editReply({
+                            content: `❌ **Account Too New**\n\nYour Roblox account **${robloxUser.username}** was created ${daysSinceCreation} days ago.\n\nFor security reasons, Roblox accounts must be **at least 30 days old** to verify.\n\nPlease try again in **${daysRemaining} day${daysRemaining === 1 ? '' : 's'}**.`
+                        });
+                        pendingManualVerifications.delete(interaction.user.id);
+                        return;
+                    }
+                }
+                
+                // Generate verification code to prove account ownership
+                const verificationCode = generateVerificationCode();
+                
+                // Update with full data and code
+                pendingManualVerifications.set(interaction.user.id, {
+                    ...step2Data,
+                    robloxUsernameVerify,
+                    robloxUser,
+                    playedBefore,
+                    comfortableRules,
+                    experienceHoping,
+                    anythingElse,
+                    verificationCode,
+                    step: 3,
+                    submittedAt: new Date().toISOString()
+                });
+                
+                // Auto-expire code after 15 minutes
+                setTimeout(() => {
+                    const pending = pendingManualVerifications.get(interaction.user.id);
+                    if (pending && pending.verificationCode === verificationCode && pending.step === 3) {
+                        pendingManualVerifications.delete(interaction.user.id);
+                        console.log(`Manual verification code expired for ${interaction.user.tag}`);
+                    }
+                }, 15 * 60 * 1000);
+                
+                // Send code verification instructions
+                const codeEmbed = new EmbedBuilder()
+                    .setTitle('🔐 Verify Your Roblox Account')
+                    .setDescription(`To prove you own **${robloxUser.username}**, add this code to your Roblox profile description:`)
+                    .setColor(0x00d4ff)
+                    .addFields(
+                        { name: '📋 Your Verification Code', value: `\`\`\`${verificationCode}\`\`\``, inline: false },
+                        { name: '📝 Instructions', value: 
+                            '1. Go to your [Roblox Profile Settings](https://www.roblox.com/my/account#!/info)\n' +
+                            '2. In the "About" section, paste the code above anywhere in your description\n' +
+                            '3. Save your profile\n' +
+                            '4. Click the **"✅ I Added the Code"** button below\n\n' +
+                            '*You can remove the code after verification*', inline: false },
+                        { name: '⏰ Expires', value: 'This code expires in **15 minutes**', inline: true }
+                    )
+                    .setThumbnail(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${robloxUser.id}&size=150x150&format=Png`)
+                    .setFooter({ text: `Verifying: ${robloxUser.username} (${robloxUser.id})` });
+                
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('manual_verify_code_check')
+                            .setLabel('✅ I Added the Code')
+                            .setStyle(ButtonStyle.Success),
+                        new ButtonBuilder()
+                            .setCustomId('manual_verify_code_cancel')
+                            .setLabel('❌ Cancel')
+                            .setStyle(ButtonStyle.Secondary),
+                        new ButtonBuilder()
+                            .setLabel('Open Roblox Profile')
+                            .setStyle(ButtonStyle.Link)
+                            .setURL(`https://www.roblox.com/users/${robloxUser.id}/profile`)
+                    );
+                
+                await interaction.editReply({ embeds: [codeEmbed], components: [row] });
+                return;
+            }
+            
             if (interaction.customId === 'bloxlink_verify_modal') {
             const robloxUsername = interaction.fields.getTextInputValue('roblox_username');
             
@@ -1044,6 +1415,16 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
         
+        // Give additional verified member role
+        if (VERIFIED_MEMBER_ROLE_ID) {
+            try {
+                await pending.member.roles.add(VERIFIED_MEMBER_ROLE_ID);
+                console.log(`✓ Gave verified member role to ${interaction.user.tag}`);
+            } catch (roleError) {
+                console.error('Failed to give verified member role:', roleError.message);
+            }
+        }
+        
         // Success message
         const successEmbed = new EmbedBuilder()
             .setTitle('✅ Verification Successful!')
@@ -1076,7 +1457,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    // Handle cancel button
+    // Handle cancel button (Bloxlink-style)
     if (customId === 'verify_code_cancel') {
         pendingRobloxVerifications.delete(interaction.user.id);
         await interaction.update({
@@ -1084,6 +1465,389 @@ client.on('interactionCreate', async (interaction) => {
             embeds: [],
             components: []
         });
+        return;
+    }
+    
+    // Handle manual verification code check
+    if (customId === 'manual_verify_code_check') {
+        const pending = pendingManualVerifications.get(interaction.user.id);
+        
+        if (!pending || pending.step !== 3) {
+            await interaction.reply({
+                content: '❌ Your verification session has expired. Please start again by clicking "Start Verification".',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        await interaction.deferUpdate();
+        
+        // Check if the code is in their Roblox profile
+        const codeFound = await checkRobloxProfileCode(pending.robloxUser.id, pending.verificationCode);
+        
+        if (!codeFound) {
+            const retryEmbed = new EmbedBuilder()
+                .setTitle('❌ Code Not Found')
+                .setDescription(`Could not find the verification code in your Roblox profile description.`)
+                .setColor(0xff0000)
+                .addFields(
+                    { name: '📋 Your Code', value: `\`\`\`${pending.verificationCode}\`\`\``, inline: false },
+                    { name: '💡 Tips', value: 
+                        '• Make sure you saved your profile after adding the code\n' +
+                        '• The code must be in your "About" description\n' +
+                        '• Copy the exact code (no extra spaces)\n' +
+                        '• Wait a few seconds after saving, then try again', inline: false }
+                )
+                .setFooter({ text: 'Click "I Added the Code" again after fixing' });
+            
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('manual_verify_code_check')
+                        .setLabel('✅ I Added the Code')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId('manual_verify_code_cancel')
+                        .setLabel('❌ Cancel')
+                        .setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder()
+                        .setLabel('Open Roblox Profile')
+                        .setStyle(ButtonStyle.Link)
+                        .setURL(`https://www.roblox.com/users/${pending.robloxUser.id}/profile`)
+                );
+            
+            await interaction.editReply({ embeds: [retryEmbed], components: [row] });
+            return;
+        }
+        
+        // SUCCESS! Code was found - mark as verified and send to staff
+        pending.step = 4; // Mark as code verified
+        pending.robloxVerified = true;
+        pendingManualVerifications.set(interaction.user.id, pending);
+        
+        console.log(`✓ Roblox account verified for manual verification: ${pending.robloxUser.username}`);
+        
+        // Send to verification log channel
+        try {
+            const logChannel = await client.channels.fetch(VERIFICATION_LOG_CHANNEL_ID);
+            
+            const logEmbed = new EmbedBuilder()
+                .setTitle('📋 New Verification Request')
+                .setDescription(`**User:** <@${interaction.user.id}> (${pending.tag})\n\n✅ **Roblox Account Verified** - User proved ownership via profile code`)
+                .setColor(0xffaa00)
+                .addFields(
+                    { name: '🎂 Birthdate', value: pending.birthdate, inline: true },
+                    { name: '🔢 Age on Next Birthday', value: pending.nextBirthdayAge, inline: true },
+                    { name: '� Timezone', value: pending.timezone, inline: true },
+                    { name: '🎮 Roblox Account (VERIFIED ✅)', value: `[${pending.robloxUser.username}](https://www.roblox.com/users/${pending.robloxUser.id}/profile) (${pending.robloxUser.id})`, inline: false },
+                    { name: '🌐 Vore-Related Servers', value: pending.voreServers.substring(0, 1024) },
+                    { name: '❓ Why Join Forest Park?', value: pending.whyJoin.substring(0, 1024) },
+                    { name: '📜 Rules Quote & Explanation', value: pending.rulesQuote.substring(0, 1024) },
+                    { name: '🔍 How Found This Server', value: pending.howFound.substring(0, 1024) },
+                    { name: '⚠️ Been Banned From Servers?', value: pending.bannedBefore.substring(0, 1024) },
+                    { name: '👥 Alt Discord Accounts?', value: pending.altAccounts.substring(0, 1024) },
+                    { name: '💭 What Does Vore Mean to You?', value: pending.voreMeaning.substring(0, 1024) },
+                    { name: '🏠 Played Forest Park Before?', value: pending.playedBefore.substring(0, 1024) },
+                    { name: '✅ Comfortable Following Rules?', value: pending.comfortableRules.substring(0, 1024) },
+                    { name: '🌟 Experience Hoping For', value: pending.experienceHoping.substring(0, 1024) },
+                    { name: '📝 Anything Else', value: pending.anythingElse.substring(0, 1024) }
+                )
+                .setThumbnail(interaction.user.displayAvatarURL())
+                .setFooter({ text: `User ID: ${interaction.user.id} | Roblox verified via profile code` })
+                .setTimestamp();
+            
+            const actionRow = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`manual_verify_accept_${interaction.user.id}`)
+                        .setLabel('✅ Accept')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId(`manual_verify_deny_${interaction.user.id}`)
+                        .setLabel('❌ Deny')
+                        .setStyle(ButtonStyle.Danger)
+                );
+            
+            await logChannel.send({ embeds: [logEmbed], components: [actionRow] });
+            console.log(`✓ Sent verified verification request to log channel for ${interaction.user.tag}`);
+            
+        } catch (logError) {
+            console.error('Failed to send to log channel:', logError.message);
+        }
+        
+        // Send pending DM to user
+        try {
+            const pendingEmbed = new EmbedBuilder()
+                .setTitle('✅ Roblox Account Verified!')
+                .setDescription(`Your Roblox account **${pending.robloxUser.username}** has been verified!\n\n**What happens next:**\n• Staff will now review your verification answers\n• You\'ll receive a DM when a decision is made\n• This usually takes a few hours\n\n*You can now remove the code from your Roblox profile.*`)
+                .setColor(0x00ff00)
+                .setFooter({ text: 'Forest Park Hangout' })
+                .setTimestamp();
+            
+            await interaction.user.send({ embeds: [pendingEmbed] });
+        } catch (dmErr) {
+            console.error('Could not send pending DM:', dmErr.message);
+        }
+        
+        // Update the message
+        const successEmbed = new EmbedBuilder()
+            .setTitle('✅ Roblox Account Verified!')
+            .setDescription(`Your Roblox account **${pending.robloxUser.username}** has been verified!\n\nYour verification request has been sent to staff for review. Check your DMs for updates.`)
+            .setColor(0x00ff00)
+            .setFooter({ text: 'You can now remove the code from your Roblox profile' });
+        
+        await interaction.editReply({ embeds: [successEmbed], components: [] });
+        return;
+    }
+    
+    // Handle "Continue to Part 3" button click
+    if (customId === 'continue_to_part3') {
+        const pending = pendingManualVerifications.get(interaction.user.id);
+        
+        if (!pending || pending.step !== 2) {
+            await interaction.reply({
+                content: '❌ Your verification session has expired. Please start again by clicking "Start Verification".',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Show Part 3 modal
+        const modal3 = new ModalBuilder()
+            .setCustomId('manual_verification_modal_3')
+            .setTitle('Verification - Part 3 of 3');
+        
+        const robloxUsernameInput = new TextInputBuilder()
+            .setCustomId('roblox_username_verify')
+            .setLabel('11. What is your Roblox username?')
+            .setPlaceholder('Your actual username, not display name')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+        
+        const playedBeforeInput = new TextInputBuilder()
+            .setCustomId('played_before')
+            .setLabel('12. Have you played Forest Park Hangout before?')
+            .setPlaceholder('If yes, what features or areas have you explored?')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
+        
+        const comfortableRulesInput = new TextInputBuilder()
+            .setCustomId('comfortable_rules')
+            .setLabel('13. Comfortable following all server rules?')
+            .setPlaceholder('Yes/No and explain how you make sure to follow rules')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
+        
+        const experienceHopingInput = new TextInputBuilder()
+            .setCustomId('experience_hoping')
+            .setLabel('14. What experience are you hoping to have?')
+            .setPlaceholder('e.g. roleplay, social hangout, exploration, events...')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
+        
+        const anythingElseInput = new TextInputBuilder()
+            .setCustomId('anything_else')
+            .setLabel('15. Anything else you want staff to know?')
+            .setPlaceholder('Optional - any additional info or questions')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(false);
+        
+        modal3.addComponents(
+            new ActionRowBuilder().addComponents(robloxUsernameInput),
+            new ActionRowBuilder().addComponents(playedBeforeInput),
+            new ActionRowBuilder().addComponents(comfortableRulesInput),
+            new ActionRowBuilder().addComponents(experienceHopingInput),
+            new ActionRowBuilder().addComponents(anythingElseInput)
+        );
+        
+        await interaction.showModal(modal3);
+        return;
+    }
+    
+    // Handle manual verification code cancel
+    if (customId === 'manual_verify_code_cancel') {
+        pendingManualVerifications.delete(interaction.user.id);
+        await interaction.update({
+            content: '❌ Verification cancelled. Click "Start Verification" to try again.',
+            embeds: [],
+            components: []
+        });
+        return;
+    }
+    
+    // Handle "Start Manual Verification" button click
+    if (customId === 'start_manual_verification') {
+        console.log(`Manual verification started by ${interaction.user.tag}`);
+        
+        // Check if already has a pending verification
+        const existingPending = pendingManualVerifications.get(interaction.user.id);
+        if (existingPending) {
+            if (existingPending.step === 4) {
+                // Already submitted to staff
+                await interaction.reply({
+                    content: '⏳ You already have a pending verification. Please wait for staff to review it.',
+                    ephemeral: true
+                });
+            } else if (existingPending.step === 3) {
+                // In code verification phase
+                await interaction.reply({
+                    content: '⏳ You have an ongoing verification. Please complete the Roblox profile code step or cancel it first.',
+                    ephemeral: true
+                });
+            } else {
+                // In step 1 or 2, allow restart
+                pendingManualVerifications.delete(interaction.user.id);
+            }
+            if (existingPending.step >= 3) return;
+        }
+        
+        // Show modal with verification questions
+        const modal = new ModalBuilder()
+            .setCustomId('manual_verification_modal')
+            .setTitle('Verification - Part 1 of 3');
+        
+        const birthdateInput = new TextInputBuilder()
+            .setCustomId('birthdate')
+            .setLabel('1. What is your birthdate? (MM/DD/YYYY)')
+            .setPlaceholder('e.g. 01/15/2000')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+        
+        const ageInput = new TextInputBuilder()
+            .setCustomId('next_birthday_age')
+            .setLabel('2. How old will you be on your next birthday?')
+            .setPlaceholder('e.g. 21')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+        
+        const serversInput = new TextInputBuilder()
+            .setCustomId('vore_servers')
+            .setLabel('3. List vore-related servers you\'re in')
+            .setPlaceholder('Server names or links. If none, explain why you joined.')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
+        
+        const whyJoinInput = new TextInputBuilder()
+            .setCustomId('why_join')
+            .setLabel('4. Why did you join? What interests you?')
+            .setPlaceholder('Why did you decide to join Forest Park Hangout?')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
+        
+        const rulesInput = new TextInputBuilder()
+            .setCustomId('rules_quote')
+            .setLabel('5. Quote 3 rules & explain them + how you found us')
+            .setPlaceholder('Quote 3 rules, explain them, and how you found this server')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
+        
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(birthdateInput),
+            new ActionRowBuilder().addComponents(ageInput),
+            new ActionRowBuilder().addComponents(serversInput),
+            new ActionRowBuilder().addComponents(whyJoinInput),
+            new ActionRowBuilder().addComponents(rulesInput)
+        );
+        
+        await interaction.showModal(modal);
+        return;
+    }
+    
+    // Handle staff Accept/Deny for manual verification
+    if (customId.startsWith('manual_verify_accept_') || customId.startsWith('manual_verify_deny_')) {
+        const action = customId.startsWith('manual_verify_accept_') ? 'accepted' : 'denied';
+        const odId = customId.replace('manual_verify_accept_', '').replace('manual_verify_deny_', '');
+        
+        console.log(`Manual verification ${action} by ${interaction.user.tag} for user ID: ${odId}`);
+        
+        const pendingData = pendingManualVerifications.get(odId);
+        
+        if (!pendingData) {
+            await interaction.reply({
+                content: '❌ This verification request has expired or was already processed.',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        await interaction.deferUpdate();
+        
+        try {
+            const guild = interaction.guild;
+            const member = await guild.members.fetch(odId);
+            
+            if (action === 'accepted') {
+                // Give verified role
+                if (VERIFIED_MEMBER_ROLE_ID) {
+                    await member.roles.add(VERIFIED_MEMBER_ROLE_ID);
+                }
+                
+                // Send DM to user
+                try {
+                    const approvedEmbed = new EmbedBuilder()
+                        .setTitle('✅ Verification Approved!')
+                        .setDescription('Your verification for **Forest Park Hangout** has been approved!\n\nYou now have full access to the server. Enjoy your stay! 🌿')
+                        .setColor(0x00ff00)
+                        .setFooter({ text: 'Welcome to the community!' })
+                        .setTimestamp();
+                    
+                    await member.send({ embeds: [approvedEmbed] });
+                } catch (dmErr) {
+                    console.error('Could not DM user about approval:', dmErr.message);
+                }
+                
+                // Update the log message
+                const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setColor(0x00ff00)
+                    .setTitle('✅ Verification Approved')
+                    .addFields({ name: '👮 Approved By', value: `<@${interaction.user.id}>`, inline: true });
+                
+                await interaction.editReply({
+                    embeds: [updatedEmbed],
+                    components: []
+                });
+                
+                console.log(`✓ Manual verification approved for ${member.user.tag}`);
+                
+            } else {
+                // Denied
+                try {
+                    const deniedEmbed = new EmbedBuilder()
+                        .setTitle('❌ Verification Denied')
+                        .setDescription('Your verification for **Forest Park Hangout** has been denied.\n\nIf you believe this is an error, please contact staff.')
+                        .setColor(0xff0000)
+                        .setTimestamp();
+                    
+                    await member.send({ embeds: [deniedEmbed] });
+                } catch (dmErr) {
+                    console.error('Could not DM user about denial:', dmErr.message);
+                }
+                
+                // Update the log message
+                const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setColor(0xff0000)
+                    .setTitle('❌ Verification Denied')
+                    .addFields({ name: '👮 Denied By', value: `<@${interaction.user.id}>`, inline: true });
+                
+                await interaction.editReply({
+                    embeds: [updatedEmbed],
+                    components: []
+                });
+                
+                console.log(`✗ Manual verification denied for ${member.user.tag}`);
+            }
+            
+            // Remove from pending
+            pendingManualVerifications.delete(odId);
+            
+        } catch (error) {
+            console.error('Error processing manual verification:', error);
+            await interaction.followUp({
+                content: `❌ Error processing verification: ${error.message}`,
+                ephemeral: true
+            });
+        }
+        
         return;
     }
     
@@ -1250,6 +2014,19 @@ client.on('interactionCreate', async (interaction) => {
         
         // Remember the Roblox → Discord link
         robloxToDiscord.set(String(verification.robloxUserId || verification.userId), verification.discordId);
+        
+        // Give verified member role
+        if (VERIFIED_MEMBER_ROLE_ID) {
+            try {
+                const guildId = process.env.DISCORD_GUILD_ID;
+                const guild = await client.guilds.fetch(guildId);
+                const member = await guild.members.fetch(verification.discordId);
+                await member.roles.add(VERIFIED_MEMBER_ROLE_ID);
+                console.log(`✓ Gave verified member role to Discord ID ${verification.discordId}`);
+            } catch (roleError) {
+                console.error('Failed to give verified member role:', roleError.message);
+            }
+        }
         
         await interaction.editReply({
             components: [] // Remove buttons from DM
