@@ -811,56 +811,62 @@ async function postVerificationInstructions() {
     try {
         const channel = await client.channels.fetch(HOW_TO_VERIFY_CHANNEL_ID);
         
+        // Build the embed and button
+        const embed = new EmbedBuilder()
+            .setTitle('🌲 Welcome to Forest Park Hangout – Manual Verification Required')
+            .setDescription('To keep our community safe and friendly, all visitors must complete verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
+            .setColor(0x87CEEB)
+            .addFields(
+                { name: '🔐 Part 1 - Identity & Age Verification:', value: 
+                    '1. What is your birthdate? (MM/DD/YYYY)\n' +
+                    '2. How old will you be on your next birthday?\n' +
+                    '3. List any vore-related servers you are currently in\n' +
+                    '4. Why did you decide to join Forest Park Hangout?\n' +
+                    '5. Quote 3 rules & explain them in your own words'
+                },
+                { name: '🔐 Part 2 - About You:', value: 
+                    '6. How did you find this server?\n' +
+                    '7. What timezone are you in?\n' +
+                    '8. Have you been banned from any Discord servers?\n' +
+                    '9. Do you have any alt Discord accounts?\n' +
+                    '10. (Optional) What does vore mean to you?'
+                },
+                { name: '🔐 Part 3 - Roblox & Final Questions:', value: 
+                    '11. What is your Roblox username?\n' +
+                    '12. Have you played Forest Park Hangout before?\n' +
+                    '13. Are you comfortable following all server rules?\n' +
+                    '14. What experience are you hoping to have?\n' +
+                    '15. Anything else you want staff to know?'
+                },
+                { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
+                { name: '🚨 Note', value: 'If your answers don\'t match or you appear underage, your verification will be denied.\n\nIf you need help, ping <@&1386816989137211575>.' }
+            )
+            .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' });
+        
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('start_manual_verification')
+                    .setLabel('📝 Start Verification')
+                    .setStyle(ButtonStyle.Success)
+            );
+        
         // Check if we already have a verification message
         const messages = await channel.messages.fetch({ limit: 10 });
-        const hasVerifyMessage = messages.some(m => 
+        const existingMessage = messages.find(m => 
             m.author.id === client.user.id && 
             m.components.length > 0 &&
             m.components[0]?.components[0]?.customId === 'start_manual_verification'
         );
         
-        if (!hasVerifyMessage) {
-            const embed = new EmbedBuilder()
-                .setTitle('🌲 Welcome to Forest Park Hangout – Manual Verification Required')
-                .setDescription('To keep our community safe and friendly, all visitors must complete verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
-                .setColor(0x87CEEB)
-                .addFields(
-                    { name: '🔐 Part 1 - Identity & Age Verification:', value: 
-                        '1. What is your birthdate? (MM/DD/YYYY)\n' +
-                        '2. How old will you be on your next birthday?\n' +
-                        '3. List any vore-related servers you are currently in\n' +
-                        '4. Why did you decide to join Forest Park Hangout?\n' +
-                        '5. Quote 3 rules & explain them in your own words'
-                    },
-                    { name: '🔐 Part 2 - About You:', value: 
-                        '6. How did you find this server?\n' +
-                        '7. What timezone are you in?\n' +
-                        '8. Have you been banned from any Discord servers?\n' +
-                        '9. Do you have any alt Discord accounts?\n' +
-                        '10. (Optional) What does vore mean to you?'
-                    },
-                    { name: '🔐 Part 3 - Roblox & Final Questions:', value: 
-                        '11. What is your Roblox username?\n' +
-                        '12. Have you played Forest Park Hangout before?\n' +
-                        '13. Are you comfortable following all server rules?\n' +
-                        '14. What experience are you hoping to have?\n' +
-                        '15. Anything else you want staff to know?'
-                    },
-                    { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
-                    { name: '🚨 Note', value: 'If your answers don\'t match or you appear underage, your verification will be denied.\n\nIf you need help, ping <@&1386816989137211575>.' }
-                )
-                .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' });
-            
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('start_manual_verification')
-                        .setLabel('📝 Start Verification')
-                        .setStyle(ButtonStyle.Success)
-                );
-            
+        if (existingMessage) {
+            // Edit the existing message with updated content
+            await existingMessage.edit({ embeds: [embed], components: [row] });
+            console.log('✓ Updated existing verification instructions message');
+        } else {
+            // Post a new message
             await channel.send({ embeds: [embed], components: [row] });
-            console.log('✓ Posted manual verification instructions to channel');
+            console.log('✓ Posted new verification instructions to channel');
         }
     } catch (err) {
         console.error('Failed to post verification instructions:', err.message);
