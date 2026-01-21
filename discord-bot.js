@@ -1051,7 +1051,88 @@ client.once('ready', async () => {
     
     // Post manual verification instructions
     await postVerificationInstructions();
+    
+    // Start auto-accept polling if group management is configured
+    if (ROBLOX_GROUP_ID && ROBLOX_COOKIE) {
+        console.log('✓ Starting auto-accept group polling (every 5 minutes)');
+        // Run once immediately
+        setTimeout(autoAcceptVerifiedGroupRequests, 10000); // Wait 10 seconds for bot to fully initialize
+        // Then run every 5 minutes
+        setInterval(autoAcceptVerifiedGroupRequests, 5 * 60 * 1000);
+    }
 });
+
+// Auto-accept verified users who request to join the Roblox group
+async function autoAcceptVerifiedGroupRequests() {
+    if (!ROBLOX_GROUP_ID || !ROBLOX_COOKIE) return;
+    
+    try {
+        const fetch = (await import('node-fetch')).default;
+        
+        // Get pending requests
+        const response = await fetch(`https://groups.roblox.com/v1/groups/${ROBLOX_GROUP_ID}/join-requests?limit=100`, {
+            headers: { 'Cookie': `.ROBLOSECURITY=${ROBLOX_COOKIE}` }
+        });
+        const data = await response.json();
+        
+        if (data.errors) {
+            console.log(`Auto-accept check failed: ${data.errors[0]?.message}`);
+            return;
+        }
+        
+        if (!data.data || data.data.length === 0) {
+            return; // No pending requests, silently continue
+        }
+        
+        console.log(`Auto-accept: Checking ${data.data.length} pending group requests...`);
+        
+        // Get CSRF token
+        const csrfResponse = await fetch('https://auth.roblox.com/v2/logout', {
+            method: 'POST',
+            headers: { 'Cookie': `.ROBLOSECURITY=${ROBLOX_COOKIE}` }
+        });
+        const csrfToken = csrfResponse.headers.get('x-csrf-token');
+        
+        let accepted = 0;
+        
+        for (const request of data.data) {
+            const discordId = robloxToDiscord.get(String(request.requester.userId));
+            
+            if (discordId) {
+                // User is verified in Discord, auto-accept them!
+                const acceptResponse = await fetch(`https://groups.roblox.com/v1/groups/${ROBLOX_GROUP_ID}/join-requests/users/${request.requester.userId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Cookie': `.ROBLOSECURITY=${ROBLOX_COOKIE}`,
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (acceptResponse.ok) {
+                    accepted++;
+                    console.log(`✓ Auto-accepted ${request.requester.username} (verified Discord user)`);
+                    
+                    // Try to DM the Discord user to let them know
+                    try {
+                        const discordUser = await client.users.fetch(discordId);
+                        await discordUser.send(`🎉 **You've been accepted into the Roblox group!**\n\nYour request to join the group was automatically approved because you're verified in our Discord server.\n\nWelcome to the group!`);
+                    } catch (dmErr) {
+                        // Couldn't DM, that's fine
+                    }
+                }
+            }
+            // If not verified, just leave the request pending (don't decline)
+        }
+        
+        if (accepted > 0) {
+            console.log(`✓ Auto-accept complete: ${accepted} users accepted`);
+        }
+        
+    } catch (error) {
+        console.error('Auto-accept error:', error.message);
+    }
+}
 
 // Auto-give role when someone joins the server
 client.on('guildMemberAdd', async (member) => {
