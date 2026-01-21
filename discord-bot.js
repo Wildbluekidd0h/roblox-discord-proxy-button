@@ -1116,6 +1116,19 @@ async function autoAcceptVerifiedGroupRequests() {
             let discordId = robloxToDiscord.get(String(request.requester.userId));
             let shouldAccept = !!discordId;
             
+            // Fetch the Roblox user's ACTUAL display name from the API (join requests may not include it)
+            let robloxDisplayName = request.requester.username; // Default to username
+            try {
+                const userInfoResponse = await fetch(`https://users.roblox.com/v1/users/${request.requester.userId}`);
+                const userInfo = await userInfoResponse.json();
+                if (userInfo.displayName) {
+                    robloxDisplayName = userInfo.displayName;
+                }
+                console.log(`Roblox user ${request.requester.userId}: username="${request.requester.username}", displayName="${robloxDisplayName}"`);
+            } catch (err) {
+                console.log(`Could not fetch display name for ${request.requester.userId}: ${err.message}`);
+            }
+            
             // If not found in map, try to find by checking all verified users in memory
             if (!shouldAccept) {
                 for (const [dId, userData] of verifiedUsers.entries()) {
@@ -1132,17 +1145,14 @@ async function autoAcceptVerifiedGroupRequests() {
             
             // If STILL not found, search Discord members with verified role by display name match
             if (!shouldAccept && verifiedMembers.size > 0) {
-                // Use Roblox DISPLAY NAME (not username) to match with Discord display name
-                const robloxDisplayName = (request.requester.displayName || request.requester.username).toLowerCase();
-                
                 console.log(`Looking for Discord member with display name matching Roblox display name: "${robloxDisplayName}"`);
                 
                 // Try to find a Discord member whose DISPLAY NAME matches the Roblox DISPLAY NAME
                 const matchedMember = verifiedMembers.find(member => {
                     const discordDisplayName = member.displayName.toLowerCase(); // Server nickname or display name
                     
-                    // Check if Discord display name matches Roblox display name (exact match)
-                    return discordDisplayName === robloxDisplayName;
+                    // Check if Discord display name matches Roblox display name (exact match, case insensitive)
+                    return discordDisplayName === robloxDisplayName.toLowerCase();
                 });
                 
                 if (matchedMember) {
