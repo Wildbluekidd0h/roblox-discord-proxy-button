@@ -1130,24 +1130,16 @@ async function autoAcceptVerifiedGroupRequests() {
                 }
             }
             
-            // If STILL not found, search Discord members with verified role by username match
+            // If STILL not found, search Discord members with verified role by display name match
             if (!shouldAccept && verifiedMembers.size > 0) {
                 const robloxUsername = request.requester.username.toLowerCase();
                 
-                // Try to find a Discord member whose username/nickname matches the Roblox username
+                // Try to find a Discord member whose DISPLAY NAME matches the Roblox username
                 const matchedMember = verifiedMembers.find(member => {
-                    const discordUsername = member.user.username.toLowerCase();
-                    const discordDisplayName = member.displayName.toLowerCase();
-                    const discordGlobalName = member.user.globalName?.toLowerCase() || '';
+                    const discordDisplayName = member.displayName.toLowerCase(); // Server nickname or display name
                     
-                    // Check for exact or partial matches
-                    return discordUsername === robloxUsername ||
-                           discordDisplayName === robloxUsername ||
-                           discordGlobalName === robloxUsername ||
-                           discordUsername.includes(robloxUsername) ||
-                           robloxUsername.includes(discordUsername) ||
-                           discordDisplayName.includes(robloxUsername) ||
-                           robloxUsername.includes(discordDisplayName);
+                    // Check if display name matches Roblox username (exact match)
+                    return discordDisplayName === robloxUsername;
                 });
                 
                 if (matchedMember) {
