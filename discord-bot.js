@@ -2759,17 +2759,38 @@ client.on('interactionCreate', async (interaction) => {
         console.log(`Current pending verifications: ${pendingVerifications.size}`);
         
         // Acknowledge the interaction immediately to prevent timeout
-        await interaction.deferUpdate();
+        try {
+            await interaction.deferUpdate();
+        } catch (deferError) {
+            console.log('Could not defer (already handled):', deferError.message);
+            return; // Already handled, exit
+        }
         
         const verification = pendingVerifications.get(verificationId);
         
         if (!verification) {
             console.log(`Verification ${verificationId} NOT FOUND in pending list`);
-            console.log(`This usually means the server restarted (Render free tier sleeps after inactivity)`);
-            await interaction.followUp({
-                content: '❌ This verification request has expired. This can happen if the server restarted. Please go back to the game and try again.',
-                ephemeral: true
-            });
+            console.log(`Server may have restarted - Render free tier sleeps after inactivity`);
+            
+            // Update the DM message to show it expired
+            try {
+                const expiredEmbed = new EmbedBuilder()
+                    .setTitle('⏰ Verification Expired')
+                    .setDescription('This verification request has expired because the server restarted.\n\n**What to do:**\n1. Go back to Roblox\n2. Use the verification GUI again\n3. A new DM will be sent\n\n*Render free tier sleeps after 15 minutes of inactivity, which clears pending verifications.*')
+                    .setColor(0xff9900)
+                    .setFooter({ text: 'This is normal - just try again!' });
+                
+                await interaction.editReply({
+                    embeds: [expiredEmbed],
+                    components: [] // Remove the buttons
+                });
+            } catch (editError) {
+                // Fall back to followUp if edit fails
+                await interaction.followUp({
+                    content: '⏰ This verification request has expired. Please go back to Roblox and try again.',
+                    ephemeral: true
+                });
+            }
             return;
         }
         
@@ -2999,9 +3020,17 @@ client.on('interactionCreate', async (interaction) => {
                     content: '❌ An error occurred. Please try again.',
                     ephemeral: true
                 });
+            } else if (interaction.deferred && !interaction.replied) {
+                // If we deferred but haven't replied, use followUp
+                await interaction.followUp({
+                    content: '❌ An error occurred. Please try again.',
+                    ephemeral: true
+                });
             }
+            // If already replied, do nothing - we can't send more
         } catch (replyError) {
-            console.error('Could not send error reply:', replyError);
+            // Ignore - interaction already handled or timed out
+            console.log('Could not send error reply (interaction already handled)');
         }
     }
 });
