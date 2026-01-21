@@ -1193,6 +1193,83 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
+        // Check for !acceptall command (staff only) - accepts all verified users
+        if (message.content.toLowerCase() === '!acceptall') {
+            const member = message.member;
+            if (!member || !member.roles.cache.has(STAFF_ROLE_ID)) {
+                return message.reply('❌ You need the staff role to use this command.');
+            }
+            
+            if (!ROBLOX_GROUP_ID || !ROBLOX_COOKIE) {
+                return message.reply('❌ Group management is not configured.');
+            }
+            
+            const statusMsg = await message.reply('🔄 Accepting all verified users...');
+            
+            try {
+                const fetch = (await import('node-fetch')).default;
+                
+                // Get pending requests
+                const response = await fetch(`https://groups.roblox.com/v1/groups/${ROBLOX_GROUP_ID}/join-requests?limit=100`, {
+                    headers: { 'Cookie': `.ROBLOSECURITY=${ROBLOX_COOKIE}` }
+                });
+                const data = await response.json();
+                
+                if (data.errors) {
+                    return statusMsg.edit(`❌ Error: ${data.errors[0]?.message || 'Failed to get requests'}`);
+                }
+                
+                if (!data.data || data.data.length === 0) {
+                    return statusMsg.edit('✅ No pending join requests!');
+                }
+                
+                // Get CSRF token
+                const csrfResponse = await fetch('https://auth.roblox.com/v2/logout', {
+                    method: 'POST',
+                    headers: { 'Cookie': `.ROBLOSECURITY=${ROBLOX_COOKIE}` }
+                });
+                const csrfToken = csrfResponse.headers.get('x-csrf-token');
+                
+                let accepted = 0;
+                let skipped = 0;
+                const acceptedNames = [];
+                
+                for (const request of data.data) {
+                    const discordId = robloxToDiscord.get(String(request.requester.userId));
+                    
+                    if (discordId) {
+                        const acceptResponse = await fetch(`https://groups.roblox.com/v1/groups/${ROBLOX_GROUP_ID}/join-requests/users/${request.requester.userId}`, {
+                            method: 'POST',
+                            headers: {
+                                'Cookie': `.ROBLOSECURITY=${ROBLOX_COOKIE}`,
+                                'X-CSRF-TOKEN': csrfToken,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (acceptResponse.ok) {
+                            accepted++;
+                            acceptedNames.push(request.requester.username);
+                        }
+                    } else {
+                        skipped++;
+                    }
+                }
+                
+                let result = `✅ **Group Accept Complete**\n**Accepted:** ${accepted} verified users\n**Skipped:** ${skipped} unverified users`;
+                if (acceptedNames.length > 0) {
+                    result += `\n**Users:** ${acceptedNames.join(', ')}`;
+                }
+                
+                await statusMsg.edit(result);
+                
+            } catch (error) {
+                console.error('Error accepting all:', error.message);
+                statusMsg.edit(`❌ Error: ${error.message}`);
+            }
+            return;
+        }
+        
         // Check for !acceptgroup <username> command (staff only)
         if (message.content.toLowerCase().startsWith('!acceptgroup ')) {
             const member = message.member;
