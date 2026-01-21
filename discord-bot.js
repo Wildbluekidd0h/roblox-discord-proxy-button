@@ -1439,6 +1439,7 @@ client.on('messageCreate', async (message) => {
                 }
                 
                 const robloxUser = userData.data[0];
+                console.log(`Found Roblox user: ${robloxUser.name} (ID: ${robloxUser.id})`);
                 
                 // Get CSRF token
                 const csrfResponse = await fetch('https://auth.roblox.com/v2/logout', {
@@ -1446,8 +1447,10 @@ client.on('messageCreate', async (message) => {
                     headers: { 'Cookie': `.ROBLOSECURITY=${ROBLOX_COOKIE}` }
                 });
                 const csrfToken = csrfResponse.headers.get('x-csrf-token');
+                console.log(`Got CSRF token: ${csrfToken ? 'Yes' : 'No'}`);
                 
                 // Accept the request
+                console.log(`Accepting join request for user ${robloxUser.id} in group ${ROBLOX_GROUP_ID}...`);
                 const acceptResponse = await fetch(`https://groups.roblox.com/v1/groups/${ROBLOX_GROUP_ID}/join-requests/users/${robloxUser.id}`, {
                     method: 'POST',
                     headers: {
@@ -1457,12 +1460,15 @@ client.on('messageCreate', async (message) => {
                     }
                 });
                 
+                console.log(`Accept response status: ${acceptResponse.status}`);
+                
                 if (acceptResponse.ok) {
                     const discordId = robloxToDiscord.get(String(robloxUser.id));
                     const discordMention = discordId ? ` (<@${discordId}>)` : '';
                     message.channel.send(`✅ Accepted **${robloxUser.name}**${discordMention} into the group!`);
                 } else {
                     const errorData = await acceptResponse.json();
+                    console.log(`Accept error response:`, JSON.stringify(errorData));
                     message.channel.send(`❌ Failed to accept: ${errorData.errors?.[0]?.message || 'Unknown error'}`);
                 }
                 
