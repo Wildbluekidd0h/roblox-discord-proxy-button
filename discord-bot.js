@@ -1132,14 +1132,17 @@ async function autoAcceptVerifiedGroupRequests() {
             
             // If STILL not found, search Discord members with verified role by display name match
             if (!shouldAccept && verifiedMembers.size > 0) {
-                const robloxUsername = request.requester.username.toLowerCase();
+                // Use Roblox DISPLAY NAME (not username) to match with Discord display name
+                const robloxDisplayName = (request.requester.displayName || request.requester.username).toLowerCase();
                 
-                // Try to find a Discord member whose DISPLAY NAME matches the Roblox username
+                console.log(`Looking for Discord member with display name matching Roblox display name: "${robloxDisplayName}"`);
+                
+                // Try to find a Discord member whose DISPLAY NAME matches the Roblox DISPLAY NAME
                 const matchedMember = verifiedMembers.find(member => {
                     const discordDisplayName = member.displayName.toLowerCase(); // Server nickname or display name
                     
-                    // Check if display name matches Roblox username (exact match)
-                    return discordDisplayName === robloxUsername;
+                    // Check if Discord display name matches Roblox display name (exact match)
+                    return discordDisplayName === robloxDisplayName;
                 });
                 
                 if (matchedMember) {
