@@ -1093,18 +1093,18 @@ async function autoAcceptVerifiedGroupRequests() {
         });
         const csrfToken = csrfResponse.headers.get('x-csrf-token');
         
-        // Get the guild to check for verified members
+        // Get the guild to check for server members
         const guildId = process.env.DISCORD_GUILD_ID;
         let guild = null;
-        let verifiedMembers = [];
+        let allMembers = [];
         
-        if (guildId && VERIFIED_MEMBER_ROLE_ID) {
+        if (guildId) {
             try {
                 guild = await client.guilds.fetch(guildId);
-                // Fetch members with the verified role
+                // Fetch ALL members in the server
                 await guild.members.fetch();
-                verifiedMembers = guild.members.cache.filter(m => m.roles.cache.has(VERIFIED_MEMBER_ROLE_ID));
-                console.log(`Found ${verifiedMembers.size} members with verified role`);
+                allMembers = guild.members.cache;
+                console.log(`Found ${allMembers.size} total members in server`);
             } catch (guildErr) {
                 console.log(`Could not fetch guild members: ${guildErr.message}`);
             }
@@ -1143,16 +1143,16 @@ async function autoAcceptVerifiedGroupRequests() {
                 }
             }
             
-            // If STILL not found, search Discord members with verified role by display name match
-            if (!shouldAccept && verifiedMembers.size > 0) {
+            // If STILL not found, search ALL Discord members by display name match
+            if (!shouldAccept && allMembers.size > 0) {
                 console.log(`Looking for Discord member with display name matching Roblox display name: "${robloxDisplayName}"`);
                 
                 // Try to find a Discord member whose DISPLAY NAME matches the Roblox DISPLAY NAME
-                const matchedMember = verifiedMembers.find(member => {
-                    const discordDisplayName = member.displayName.toLowerCase(); // Server nickname or display name
+                const matchedMember = allMembers.find(member => {
+                    const discordDisplayName = member.displayName.toLowerCase().trim(); // Server nickname or display name
                     
                     // Check if Discord display name matches Roblox display name (exact match, case insensitive)
-                    return discordDisplayName === robloxDisplayName.toLowerCase();
+                    return discordDisplayName === robloxDisplayName.toLowerCase().trim();
                 });
                 
                 if (matchedMember) {
@@ -1165,9 +1165,14 @@ async function autoAcceptVerifiedGroupRequests() {
                         robloxUserId: request.requester.userId,
                         discordId: discordId,
                         verifiedAt: new Date().toISOString(),
-                        approvedBy: 'Auto-matched by role'
+                        approvedBy: 'Auto-matched by display name'
                     });
-                    console.log(`✓ Matched by verified role: ${request.requester.username} -> ${matchedMember.user.tag}`);
+                    console.log(`✓ Matched by display name: ${robloxDisplayName} -> ${matchedMember.user.tag} (${matchedMember.displayName})`);
+                } else {
+                    // Log some members for debugging
+                    const sampleMembers = allMembers.first(10).map(m => m.displayName);
+                    console.log(`No match found. Sample member display names: ${sampleMembers.join(', ')}`);
+                }
                 }
             }
             
@@ -1191,7 +1196,7 @@ async function autoAcceptVerifiedGroupRequests() {
                         const discordUser = await client.users.fetch(discordId);
                         const dmEmbed = new EmbedBuilder()
                             .setTitle('🎉 Group Join Request Accepted!')
-                            .setDescription(`Your request to join the Roblox group has been **automatically approved** because you're verified in our Discord server!`)
+                            .setDescription(`Your request to join the Roblox group has been **automatically approved** because you're in our Discord server!`)
                             .setColor(0x2ed573)
                             .addFields(
                                 { name: '👤 Roblox Account', value: `**${request.requester.username}**`, inline: true },
@@ -1210,9 +1215,7 @@ async function autoAcceptVerifiedGroupRequests() {
                     console.log(`Failed to accept ${request.requester.username}: ${errorData.errors?.[0]?.message || 'Unknown error'}`);
                 }
             } else {
-                console.log(`Skipped ${request.requester.username} (display: ${robloxDisplayName}) - no matching verified Discord member found`);
-                // Log all verified members' display names for debugging
-                console.log(`Verified members display names: ${verifiedMembers.map(m => m.displayName).join(', ')}`);
+                console.log(`Skipped ${request.requester.username} (Roblox display: "${robloxDisplayName}") - no Discord member with matching display name`);
             }
         }
         
