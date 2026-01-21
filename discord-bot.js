@@ -1274,6 +1274,60 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
+        // Check for !linkme <roblox username> command (staff only) - quick self-link
+        if (message.content.toLowerCase().startsWith('!linkme ')) {
+            const member = message.member;
+            if (!member || !member.roles.cache.has(STAFF_ROLE_ID)) {
+                return message.reply('❌ You need the staff role to use this command.');
+            }
+            
+            const robloxUsername = message.content.slice(8).trim();
+            if (!robloxUsername) {
+                return message.reply('❌ Usage: `!linkme YourRobloxUsername`');
+            }
+            
+            await message.reply(`🔄 Looking up **${robloxUsername}**...`);
+            
+            try {
+                const fetch = (await import('node-fetch')).default;
+                
+                // Look up Roblox user
+                const userResponse = await fetch('https://users.roblox.com/v1/usernames/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ usernames: [robloxUsername], excludeBannedUsers: true })
+                });
+                const userData = await userResponse.json();
+                
+                if (!userData.data || userData.data.length === 0) {
+                    return message.channel.send(`❌ Could not find Roblox user **${robloxUsername}**`);
+                }
+                
+                const robloxUser = userData.data[0];
+                
+                // Link the accounts
+                verifiedUsers.set(message.author.id, {
+                    robloxUsername: robloxUser.name,
+                    robloxUserId: robloxUser.id,
+                    discordId: message.author.id,
+                    verifiedAt: new Date().toISOString(),
+                    approvedBy: 'Self-link (staff)'
+                });
+                
+                robloxToDiscord.set(String(robloxUser.id), message.author.id);
+                discordToRoblox.set(message.author.id, String(robloxUser.id));
+                
+                message.channel.send(`✅ **Linked!** Your Discord account is now linked to Roblox user **${robloxUser.name}** (ID: ${robloxUser.id})\n\nIf you have a pending group request, it will be auto-accepted within 5 minutes (or use \`!acceptall\` now).`);
+                
+                console.log(`✓ Staff ${message.author.tag} self-linked to Roblox: ${robloxUser.name} (${robloxUser.id})`);
+                
+            } catch (error) {
+                console.error('Error in !linkme:', error.message);
+                message.channel.send(`❌ Error: ${error.message}`);
+            }
+            return;
+        }
+        
         // Check for !acceptall command (staff only) - accepts all verified users
         if (message.content.toLowerCase() === '!acceptall') {
             const member = message.member;
