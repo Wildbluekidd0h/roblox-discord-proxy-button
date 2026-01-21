@@ -1173,7 +1173,6 @@ async function autoAcceptVerifiedGroupRequests() {
                     const sampleMembers = allMembers.first(10).map(m => m.displayName);
                     console.log(`No match found. Sample member display names: ${sampleMembers.join(', ')}`);
                 }
-                }
             }
             
             if (shouldAccept && discordId) {
