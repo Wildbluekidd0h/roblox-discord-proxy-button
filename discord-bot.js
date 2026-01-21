@@ -1097,15 +1097,26 @@ client.on('messageCreate', async (message) => {
     // Ignore bot messages
     if (message.author.bot) return;
     
+    // Debug log for all messages
+    if (message.guild) {
+        console.log(`Message in server: "${message.content}" from ${message.author.tag}`);
+    }
+    
     // Handle server commands (not DMs)
     if (message.guild) {
         // Check for !grouprequests command (staff only)
         if (message.content.toLowerCase() === '!grouprequests') {
+            console.log(`!grouprequests command from ${message.author.tag}`);
+            
             // Check if user has staff role
             const member = message.member;
+            console.log(`User has staff role: ${member?.roles.cache.has(STAFF_ROLE_ID)}, Staff Role ID: ${STAFF_ROLE_ID}`);
+            
             if (!member || !member.roles.cache.has(STAFF_ROLE_ID)) {
                 return message.reply('❌ You need the staff role to use this command.');
             }
+            
+            console.log(`ROBLOX_GROUP_ID: ${ROBLOX_GROUP_ID}, ROBLOX_COOKIE set: ${!!ROBLOX_COOKIE}`);
             
             if (!ROBLOX_GROUP_ID || !ROBLOX_COOKIE) {
                 return message.reply('❌ Group management is not configured. Set `ROBLOX_GROUP_ID` and `ROBLOX_COOKIE` environment variables.');
