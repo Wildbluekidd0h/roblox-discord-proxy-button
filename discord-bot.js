@@ -2478,7 +2478,13 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ content: '❌ You need the staff role to use this.', ephemeral: true });
         }
         
-        await interaction.deferUpdate();
+        // Defer immediately to prevent timeout
+        try {
+            await interaction.deferReply({ ephemeral: false });
+        } catch (deferErr) {
+            console.log('Could not defer group accept button:', deferErr.message);
+            return;
+        }
         
         try {
             const fetch = (await import('node-fetch')).default;
@@ -2489,8 +2495,12 @@ client.on('interactionCreate', async (interaction) => {
             });
             const data = await response.json();
             
+            if (data.errors) {
+                return interaction.editReply({ content: `❌ Error: ${data.errors[0]?.message || 'Failed to get requests'}` });
+            }
+            
             if (!data.data || data.data.length === 0) {
-                return interaction.followUp({ content: '✅ No pending join requests!', ephemeral: true });
+                return interaction.editReply({ content: '✅ No pending join requests!' });
             }
             
             // Get CSRF token
@@ -2537,7 +2547,7 @@ client.on('interactionCreate', async (interaction) => {
                 resultEmbed.addFields({ name: 'Accepted Users', value: acceptedNames.slice(0, 20).join(', ') + (acceptedNames.length > 20 ? '...' : '') });
             }
             
-            await interaction.editReply({ embeds: [resultEmbed], components: [] });
+            await interaction.editReply({ embeds: [resultEmbed] });
             
         } catch (error) {
             console.error('Error accepting all verified:', error.message);
