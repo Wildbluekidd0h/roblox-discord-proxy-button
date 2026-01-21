@@ -1093,24 +1093,76 @@ async function autoAcceptVerifiedGroupRequests() {
         });
         const csrfToken = csrfResponse.headers.get('x-csrf-token');
         
+        // Get the guild to check for verified members
+        const guildId = process.env.DISCORD_GUILD_ID;
+        let guild = null;
+        let verifiedMembers = [];
+        
+        if (guildId && VERIFIED_MEMBER_ROLE_ID) {
+            try {
+                guild = await client.guilds.fetch(guildId);
+                // Fetch members with the verified role
+                await guild.members.fetch();
+                verifiedMembers = guild.members.cache.filter(m => m.roles.cache.has(VERIFIED_MEMBER_ROLE_ID));
+                console.log(`Found ${verifiedMembers.size} members with verified role`);
+            } catch (guildErr) {
+                console.log(`Could not fetch guild members: ${guildErr.message}`);
+            }
+        }
+        
         let accepted = 0;
         
         for (const request of data.data) {
             let discordId = robloxToDiscord.get(String(request.requester.userId));
             let shouldAccept = !!discordId;
             
-            // If not found in map, try to find by checking all verified users
+            // If not found in map, try to find by checking all verified users in memory
             if (!shouldAccept) {
                 for (const [dId, userData] of verifiedUsers.entries()) {
                     if (String(userData.robloxUserId) === String(request.requester.userId) ||
                         userData.robloxUsername?.toLowerCase() === request.requester.username?.toLowerCase()) {
                         discordId = dId;
                         shouldAccept = true;
-                        // Also add to the map for future lookups
                         robloxToDiscord.set(String(request.requester.userId), dId);
-                        console.log(`Found verified user by username match: ${request.requester.username} -> ${dId}`);
+                        console.log(`Found verified user in memory: ${request.requester.username} -> ${dId}`);
                         break;
                     }
+                }
+            }
+            
+            // If STILL not found, search Discord members with verified role by username match
+            if (!shouldAccept && verifiedMembers.size > 0) {
+                const robloxUsername = request.requester.username.toLowerCase();
+                
+                // Try to find a Discord member whose username/nickname matches the Roblox username
+                const matchedMember = verifiedMembers.find(member => {
+                    const discordUsername = member.user.username.toLowerCase();
+                    const discordDisplayName = member.displayName.toLowerCase();
+                    const discordGlobalName = member.user.globalName?.toLowerCase() || '';
+                    
+                    // Check for exact or partial matches
+                    return discordUsername === robloxUsername ||
+                           discordDisplayName === robloxUsername ||
+                           discordGlobalName === robloxUsername ||
+                           discordUsername.includes(robloxUsername) ||
+                           robloxUsername.includes(discordUsername) ||
+                           discordDisplayName.includes(robloxUsername) ||
+                           robloxUsername.includes(discordDisplayName);
+                });
+                
+                if (matchedMember) {
+                    discordId = matchedMember.user.id;
+                    shouldAccept = true;
+                    // Save the link for future use
+                    robloxToDiscord.set(String(request.requester.userId), discordId);
+                    verifiedUsers.set(discordId, {
+                        robloxUsername: request.requester.username,
+                        robloxUserId: request.requester.userId,
+                        discordId: discordId,
+                        verifiedAt: new Date().toISOString(),
+                        approvedBy: 'Auto-matched by role'
+                    });
+                    console.log(`✓ Matched by verified role: ${request.requester.username} -> ${matchedMember.user.tag}`);
                 }
             }
             
@@ -1127,7 +1179,7 @@ async function autoAcceptVerifiedGroupRequests() {
                 
                 if (acceptResponse.ok) {
                     accepted++;
-                    console.log(`✓ Auto-accepted ${request.requester.username} (verified Discord user: ${discordId})`);
+                    console.log(`✓ Auto-accepted ${request.requester.username} (Discord: ${discordId})`);
                     
                     // Try to DM the Discord user to let them know
                     try {
@@ -1152,8 +1204,9 @@ async function autoAcceptVerifiedGroupRequests() {
                     const errorData = await acceptResponse.json().catch(() => ({}));
                     console.log(`Failed to accept ${request.requester.username}: ${errorData.errors?.[0]?.message || 'Unknown error'}`);
                 }
+            } else {
+                console.log(`Skipped ${request.requester.username} - no matching verified Discord member found`);
             }
-            // If not verified, just leave the request pending (don't decline)
         }
         
         if (accepted > 0) {
