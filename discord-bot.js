@@ -1054,11 +1054,11 @@ client.once('ready', async () => {
     
     // Start auto-accept polling if group management is configured
     if (ROBLOX_GROUP_ID && ROBLOX_COOKIE) {
-        console.log('✓ Starting auto-accept group polling (every 1 minute)');
+        console.log('✓ Starting auto-accept group polling (every 15 seconds)');
         // Run once immediately
-        setTimeout(autoAcceptVerifiedGroupRequests, 10000); // Wait 10 seconds for bot to fully initialize
-        // Then run every 1 minute for faster acceptance
-        setInterval(autoAcceptVerifiedGroupRequests, 60 * 1000);
+        setTimeout(autoAcceptVerifiedGroupRequests, 5000); // Wait 5 seconds for bot to fully initialize
+        // Then run every 15 seconds for near-instant acceptance
+        setInterval(autoAcceptVerifiedGroupRequests, 15 * 1000);
     }
 });
 
@@ -1096,9 +1096,25 @@ async function autoAcceptVerifiedGroupRequests() {
         let accepted = 0;
         
         for (const request of data.data) {
-            const discordId = robloxToDiscord.get(String(request.requester.userId));
+            let discordId = robloxToDiscord.get(String(request.requester.userId));
+            let shouldAccept = !!discordId;
             
-            if (discordId) {
+            // If not found in map, try to find by checking all verified users
+            if (!shouldAccept) {
+                for (const [dId, userData] of verifiedUsers.entries()) {
+                    if (String(userData.robloxUserId) === String(request.requester.userId) ||
+                        userData.robloxUsername?.toLowerCase() === request.requester.username?.toLowerCase()) {
+                        discordId = dId;
+                        shouldAccept = true;
+                        // Also add to the map for future lookups
+                        robloxToDiscord.set(String(request.requester.userId), dId);
+                        console.log(`Found verified user by username match: ${request.requester.username} -> ${dId}`);
+                        break;
+                    }
+                }
+            }
+            
+            if (shouldAccept && discordId) {
                 // User is verified in Discord, auto-accept them!
                 const acceptResponse = await fetch(`https://groups.roblox.com/v1/groups/${ROBLOX_GROUP_ID}/join-requests/users/${request.requester.userId}`, {
                     method: 'POST',
@@ -1111,15 +1127,30 @@ async function autoAcceptVerifiedGroupRequests() {
                 
                 if (acceptResponse.ok) {
                     accepted++;
-                    console.log(`✓ Auto-accepted ${request.requester.username} (verified Discord user)`);
+                    console.log(`✓ Auto-accepted ${request.requester.username} (verified Discord user: ${discordId})`);
                     
                     // Try to DM the Discord user to let them know
                     try {
                         const discordUser = await client.users.fetch(discordId);
-                        await discordUser.send(`🎉 **You've been accepted into the Roblox group!**\n\nYour request to join the group was automatically approved because you're verified in our Discord server.\n\nWelcome to the group!`);
+                        const dmEmbed = new EmbedBuilder()
+                            .setTitle('🎉 Group Join Request Accepted!')
+                            .setDescription(`Your request to join the Roblox group has been **automatically approved** because you're verified in our Discord server!`)
+                            .setColor(0x2ed573)
+                            .addFields(
+                                { name: '👤 Roblox Account', value: `**${request.requester.username}**`, inline: true },
+                                { name: '📅 Accepted', value: 'Just now!', inline: true }
+                            )
+                            .setFooter({ text: 'Welcome to the group! 🌲' })
+                            .setTimestamp();
+                        
+                        await discordUser.send({ embeds: [dmEmbed] });
+                        console.log(`✓ Sent acceptance DM to ${discordUser.tag}`);
                     } catch (dmErr) {
-                        // Couldn't DM, that's fine
+                        console.log(`Could not DM user ${discordId}: ${dmErr.message}`);
                     }
+                } else {
+                    const errorData = await acceptResponse.json().catch(() => ({}));
+                    console.log(`Failed to accept ${request.requester.username}: ${errorData.errors?.[0]?.message || 'Unknown error'}`);
                 }
             }
             // If not verified, just leave the request pending (don't decline)
