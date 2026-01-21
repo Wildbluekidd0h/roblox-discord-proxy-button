@@ -41,7 +41,7 @@ const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID || process.env.DISCORD_V
 const AUTO_ROLE_ID = '1462613689168302183';
 
 // Additional role to give when verified (e.g., member role)
-const VERIFIED_MEMBER_ROLE_ID = '1462613966453739743';
+const VERIFIED_MEMBER_ROLE_ID = '1336560854199439411';
 
 // Manual verification channels
 const VERIFICATION_LOG_CHANNEL_ID = '1386815060428722196';
