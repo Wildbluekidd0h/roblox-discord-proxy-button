@@ -1210,7 +1210,9 @@ async function autoAcceptVerifiedGroupRequests() {
                     console.log(`Failed to accept ${request.requester.username}: ${errorData.errors?.[0]?.message || 'Unknown error'}`);
                 }
             } else {
-                console.log(`Skipped ${request.requester.username} - no matching verified Discord member found`);
+                console.log(`Skipped ${request.requester.username} (display: ${robloxDisplayName}) - no matching verified Discord member found`);
+                // Log all verified members' display names for debugging
+                console.log(`Verified members display names: ${verifiedMembers.map(m => m.displayName).join(', ')}`);
             }
         }
         
