@@ -1054,11 +1054,11 @@ client.once('ready', async () => {
     
     // Start auto-accept polling if group management is configured
     if (ROBLOX_GROUP_ID && ROBLOX_COOKIE) {
-        console.log('✓ Starting auto-accept group polling (every 5 minutes)');
+        console.log('✓ Starting auto-accept group polling (every 1 minute)');
         // Run once immediately
         setTimeout(autoAcceptVerifiedGroupRequests, 10000); // Wait 10 seconds for bot to fully initialize
-        // Then run every 5 minutes
-        setInterval(autoAcceptVerifiedGroupRequests, 5 * 60 * 1000);
+        // Then run every 1 minute for faster acceptance
+        setInterval(autoAcceptVerifiedGroupRequests, 60 * 1000);
     }
 });
 

@@ -1,0 +1,8 @@
+run = "node discord-bot.js"
+modules = ["nodejs-20"]
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "node discord-bot.js"]
