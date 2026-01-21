@@ -2457,7 +2457,9 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
         
-        // Start DM verification
+        // Start DM verification - defer first to prevent timeout
+        await interaction.deferReply({ ephemeral: true });
+        
         try {
             // Initialize verification data
             pendingManualVerifications.set(interaction.user.id, {
@@ -2483,17 +2485,15 @@ client.on('interactionCreate', async (interaction) => {
             const firstQuestion = VERIFICATION_QUESTIONS[0];
             await interaction.user.send(firstQuestion.question);
             
-            await interaction.reply({
-                content: '✅ **Verification started!** Check your DMs to answer the verification questions.',
-                ephemeral: true
+            await interaction.editReply({
+                content: '✅ **Verification started!** Check your DMs to answer the verification questions.'
             });
             
         } catch (dmError) {
             console.error(`Could not DM ${interaction.user.tag}:`, dmError.message);
             pendingManualVerifications.delete(interaction.user.id);
-            await interaction.reply({
-                content: '❌ **Could not send you a DM!** Please make sure your DMs are open for this server, then try again.\n\n**How to enable DMs:**\n1. Right-click the server icon\n2. Click "Privacy Settings"\n3. Enable "Direct Messages"',
-                ephemeral: true
+            await interaction.editReply({
+                content: '❌ **Could not send you a DM!** Please make sure your DMs are open for this server, then try again.\n\n**How to enable DMs:**\n1. Right-click the server icon\n2. Click "Privacy Settings"\n3. Enable "Direct Messages"'
             });
         }
         return;
