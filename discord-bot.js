@@ -1422,6 +1422,49 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
+        // Check for !verify @user command (staff only) - quickly verify a user
+        if (message.content.toLowerCase().startsWith('!verify ')) {
+            const member = message.member;
+            if (!member || !member.roles.cache.has(STAFF_ROLE_ID)) {
+                return message.reply('❌ You need the staff role to use this command.');
+            }
+            
+            // Get mentioned user
+            const mentionedUser = message.mentions.members.first();
+            if (!mentionedUser) {
+                return message.reply('❌ Usage: `!verify @user` - Mention the user you want to verify.');
+            }
+            
+            try {
+                // Give verified role
+                if (VERIFIED_MEMBER_ROLE_ID) {
+                    await mentionedUser.roles.add(VERIFIED_MEMBER_ROLE_ID);
+                }
+                
+                // Try to DM the user
+                try {
+                    const verifiedEmbed = new EmbedBuilder()
+                        .setTitle('✅ You Have Been Verified!')
+                        .setDescription('A staff member has manually verified you for **Forest Park Hangout**!\n\nYou now have full access to the server. Enjoy your stay! 🌿')
+                        .setColor(0x00ff00)
+                        .setFooter({ text: 'Welcome to the community!' })
+                        .setTimestamp();
+                    
+                    await mentionedUser.send({ embeds: [verifiedEmbed] });
+                } catch (dmErr) {
+                    // Couldn't DM, that's fine
+                }
+                
+                message.channel.send(`✅ **${mentionedUser.user.tag}** has been verified and given the verified role!`);
+                console.log(`✓ Staff ${message.author.tag} manually verified ${mentionedUser.user.tag}`);
+                
+            } catch (error) {
+                console.error('Error in !verify:', error.message);
+                message.channel.send(`❌ Error: ${error.message}`);
+            }
+            return;
+        }
+        
         // Check for !acceptall command (staff only) - accepts all verified users
         if (message.content.toLowerCase() === '!acceptall') {
             const member = message.member;
