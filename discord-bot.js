@@ -56,21 +56,22 @@ const pendingManualVerifications = new Map();
 
 // DM Verification Questions
 const VERIFICATION_QUESTIONS = [
-    { key: 'birthdate', question: '**Question 1/15:** What is your birthdate? (MM/DD/YYYY or DD/MM/YYYY)\n*We use this to confirm your age. You must be 13 or older to join.*' },
-    { key: 'nextBirthdayAge', question: '**Question 2/15:** How old will you be on your next birthday?' },
-    { key: 'voreServers', question: '**Question 3/15:** List any vore-related servers you are currently in.\n*Include server names or links. If none, explain why you joined this server.*' },
-    { key: 'whyJoin', question: '**Question 4/15:** Why did you decide to join Forest Park Hangout?' },
-    { key: 'interests', question: '**Question 5/15:** What about this server interests you?' },
-    { key: 'rulesQuote', question: '**Question 6/15:** Quote 3 rules from our server and explain what they mean in your own words.\n*This shows you\'ve read and understand the rules.*' },
-    { key: 'howFound', question: '**Question 7/15:** How did you find this server?\n*Be specific: invite from a friend, Discord search, another server, etc.*' },
-    { key: 'timezone', question: '**Question 8/15:** What timezone are you in?\n*e.g. EST, PST, GMT, UTC+2*' },
-    { key: 'bannedBefore', question: '**Question 9/15:** Have you been banned from any Discord servers before?\n*If yes, explain which servers and why. If no, just say No.*' },
-    { key: 'altAccounts', question: '**Question 10/15:** Do you have any alt Discord accounts?\n*If yes, list them. If no, just say No.*' },
-    { key: 'voreMeaning', question: '**Question 11/15:** (Optional) What does vore mean to you?\n*You can skip this by typing "skip"*' },
-    { key: 'robloxUsername', question: '**Question 12/15:** What is your Roblox username?\n*Your actual username, not display name. We will verify you own this account.*' },
-    { key: 'playedBefore', question: '**Question 13/15:** Have you played Forest Park Hangout on Roblox before?\n*If yes, what features or areas have you explored?*' },
-    { key: 'comfortableRules', question: '**Question 14/15:** Are you comfortable following all server rules?\n*Explain how you make sure to follow community rules.*' },
-    { key: 'experienceHoping', question: '**Question 15/15:** What kind of experience are you hoping to have here?\n*e.g. roleplay, social hangout, exploration, events...*' }
+    { key: 'birthdate', question: '**Question 1/16:** What is your birthdate? (MM/DD/YYYY or DD/MM/YYYY)\n*We use this to confirm your age. You must be 18 or older to join this community.*' },
+    { key: 'nextBirthdayAge', question: '**Question 2/16:** How old will you be on your next birthday?' },
+    { key: 'voreServers', question: '**Question 3/16:** List any vore-related servers you are currently in.\n*Include server names or links. If none, explain why you joined this server.*' },
+    { key: 'whyJoin', question: '**Question 4/16:** Why did you decide to join Forest Park Hangout?' },
+    { key: 'interests', question: '**Question 5/16:** What about this server interests you?' },
+    { key: 'rulesQuote', question: '**Question 6/16:** Quote 3 rules from our server and explain what they mean in your own words.\n*This shows you\'ve read and understand the rules.*' },
+    { key: 'friendReferral', question: '**Question 7/16:** Were you invited by a friend? If yes, please tell us their Discord username or server nickname.\n*If not invited by a friend, just say No.*' },
+    { key: 'howFound', question: '**Question 8/16:** How did you find this server?\n*Be specific: invite from a friend, Discord search, another server, etc.*' },
+    { key: 'timezone', question: '**Question 9/16:** What timezone are you in?\n*e.g. EST, PST, GMT, UTC+2*' },
+    { key: 'bannedBefore', question: '**Question 10/16:** Have you been banned from any Discord servers before?\n*If yes, explain which servers and why. If no, just say No.*' },
+    { key: 'altAccounts', question: '**Question 11/16:** Do you have any alt Discord accounts?\n*If yes, list them. If no, just say No.*' },
+    { key: 'voreMeaning', question: '**Question 12/16:** (Optional) What does vore mean to you?\n*You can skip this by typing "skip"*' },
+    { key: 'robloxUsername', question: '**Question 13/16:** What is your Roblox username?\n*Your actual username, not display name. We will verify you own this account.*' },
+    { key: 'playedBefore', question: '**Question 14/16:** Have you played Forest Park Hangout on Roblox before?\n*If yes, what features or areas have you explored?*' },
+    { key: 'comfortableRules', question: '**Question 15/16:** Are you comfortable following all server rules?\n*Explain how you make sure to follow community rules.*' },
+    { key: 'experienceHoping', question: '**Question 16/16:** What kind of experience are you hoping to have here?\n*e.g. roleplay, social hangout, exploration, events...*' }
 ];
 
 // Create Discord client
@@ -1244,13 +1245,14 @@ client.on('guildMemberAdd', async (member) => {
     // Send DM with verification instructions
     try {
         const welcomeEmbed = new EmbedBuilder()
-            .setTitle('🌲 Welcome to Forest Park Hangout - Manual Verification Required')
-            .setDescription('To keep our community safe and friendly, all visitors must complete verification before accessing the full server.\n\n**Please answer all the following questions honestly and completely.**')
+            .setTitle('🔞 Welcome to Forest Park Hangout - 18+ Verification Required')
+            .setDescription('**This is an 18+ community.** To keep our community safe and friendly, all visitors must complete age verification before accessing the full server.\n\n**Please answer all the following questions honestly and completely.**')
             .setColor(0x00d4ff)
             .addFields(
-                { name: '📋 How to Verify', value: `Please go to <#${HOW_TO_VERIFY_CHANNEL_ID}> and click the **"Start Verification"** button to begin answering the verification questions.` },
+                { name: '📋 How to Verify', value: `Please go to <#${HOW_TO_VERIFY_CHANNEL_ID}> and click the **"Start 18+ Verification"** button to begin answering the verification questions.` },
+                { name: '👥 Invited by a Friend?', value: 'If you were invited by a friend, please let us know who invited you during the verification process!' },
                 { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
-                { name: '⚠️ Note', value: 'If your answers don\'t match or you appear underage, your verification will be denied.' }
+                { name: '⚠️ Note', value: 'If your answers don\'t match or you appear to be under 18, your verification will be denied.' }
             )
             .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' })
             .setTimestamp();
@@ -1758,8 +1760,8 @@ async function postVerificationInstructions() {
         
         // Build the embed and button
         const embed = new EmbedBuilder()
-            .setTitle('🌲 Welcome to Forest Park Hangout – Manual Verification Required')
-            .setDescription('To keep our community safe and friendly, all visitors must complete verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
+            .setTitle('🔞 Welcome to Forest Park Hangout – 18+ Verification Required')
+            .setDescription('**This is an 18+ community.** To keep our community safe and friendly, all visitors must complete age verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
             .setColor(0x87CEEB)
             .addFields(
                 { name: '🔐 Part 1 - Identity & Age Verification:', value: 
@@ -1767,24 +1769,26 @@ async function postVerificationInstructions() {
                     '2. How old will you be on your next birthday?\n' +
                     '3. List any vore-related servers you are currently in\n' +
                     '4. Why did you decide to join Forest Park Hangout?\n' +
-                    '5. Quote 3 rules & explain them in your own words'
+                    '5. Quote 3 rules & explain them in your own words\n' +
+                    '6. **Were you invited by a friend? If yes, who?**'
                 },
                 { name: '🔐 Part 2 - About You:', value: 
-                    '6. How did you find this server?\n' +
-                    '7. What timezone are you in?\n' +
-                    '8. Have you been banned from any Discord servers?\n' +
-                    '9. Do you have any alt Discord accounts?\n' +
-                    '10. (Optional) What does vore mean to you?'
+                    '7. How did you find this server?\n' +
+                    '8. What timezone are you in?\n' +
+                    '9. Have you been banned from any Discord servers?\n' +
+                    '10. Do you have any alt Discord accounts?\n' +
+                    '11. (Optional) What does vore mean to you?'
                 },
                 { name: '🔐 Part 3 - Roblox & Final Questions:', value: 
-                    '11. What is your Roblox username?\n' +
-                    '12. Have you played Forest Park Hangout before?\n' +
-                    '13. Are you comfortable following all server rules?\n' +
-                    '14. What experience are you hoping to have?\n' +
-                    '15. Anything else you want staff to know?'
+                    '12. What is your Roblox username?\n' +
+                    '13. Have you played Forest Park Hangout before?\n' +
+                    '14. Are you comfortable following all server rules?\n' +
+                    '15. What experience are you hoping to have?\n' +
+                    '16. Anything else you want staff to know?'
                 },
+                { name: '👥 Invited by a Friend?', value: 'If you were invited by a friend, please let us know who invited you!' },
                 { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
-                { name: '🚨 Note', value: 'If your answers don\'t match or you appear underage, your verification will be denied.\n\nIf you need help, ping <@&1386816989137211575>.' }
+                { name: '🚨 Note', value: 'If your answers don\'t match or you appear to be under 18, your verification will be denied.\n\nIf you need help, ping <@&1386816989137211575>.' }
             )
             .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' });
         
@@ -1792,7 +1796,7 @@ async function postVerificationInstructions() {
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('start_manual_verification')
-                    .setLabel('📝 Start Verification')
+                    .setLabel('📝 Start 18+ Verification')
                     .setStyle(ButtonStyle.Success)
             );
         
