@@ -65,20 +65,24 @@ const PING_ROLES = [
     { id: '1467184835687612476', label: 'Update Ping', emoji: '🆕', description: 'Get pinged for updates' },
 ].filter(role => role.id); // Only include roles that have IDs set
 
-// Gender roles configuration
-const GENDER_ROLES = [
-    { id: process.env.GENDER_ROLE_MALE || null, label: 'Male', emoji: '♂️', description: 'Male' },
-    { id: process.env.GENDER_ROLE_FEMALE || null, label: 'Female', emoji: '♀️', description: 'Female' },
-    { id: process.env.GENDER_ROLE_NONBINARY || null, label: 'Non-Binary', emoji: '⚧️', description: 'Non-Binary' },
-    { id: process.env.GENDER_ROLE_OTHER || null, label: 'Other', emoji: '🌈', description: 'Other' },
-].filter(role => role.id); // Only include roles that have IDs set
+// Gender roles configuration - will be auto-created if they don't exist
+const GENDER_ROLE_DEFINITIONS = [
+    { name: 'Male', emoji: '♂️', color: '#3498db', description: 'Male' },
+    { name: 'Female', emoji: '♀️', color: '#e91e63', description: 'Female' },
+    { name: 'Non-Binary', emoji: '⚧️', color: '#9b59b6', description: 'Non-Binary' },
+    { name: 'Other', emoji: '🌈', color: '#2ecc71', description: 'Other' },
+];
 
-// Vore preference roles configuration
-const VORE_ROLES = [
-    { id: process.env.VORE_ROLE_SWITCH || null, label: 'Switch', emoji: '🔄', description: 'Both pred and prey' },
-    { id: process.env.VORE_ROLE_PRED || null, label: 'Pred', emoji: '🦁', description: 'Predator' },
-    { id: process.env.VORE_ROLE_PREY || null, label: 'Prey', emoji: '🐰', description: 'Prey' },
-].filter(role => role.id); // Only include roles that have IDs set
+// Vore preference roles configuration - will be auto-created if they don't exist
+const VORE_ROLE_DEFINITIONS = [
+    { name: 'Switch', emoji: '🔄', color: '#f39c12', description: 'Both pred and prey' },
+    { name: 'Pred', emoji: '🦁', color: '#e74c3c', description: 'Predator' },
+    { name: 'Prey', emoji: '🐰', color: '#3498db', description: 'Prey' },
+];
+
+// These will be populated when roles are created/found
+let GENDER_ROLES = [];
+let VORE_ROLES = [];
 
 // Roblox Group Configuration
 const ROBLOX_GROUP_ID = process.env.ROBLOX_GROUP_ID || null; // Your Roblox group ID
@@ -1409,12 +1413,80 @@ async function setupServer(guild) {
     return results;
 }
 
+// Setup self-assignable roles (gender, vore preferences)
+async function setupSelfAssignRoles(guild) {
+    console.log(`🔧 Setting up self-assign roles in ${guild.name}...`);
+    
+    // Create/find Gender Roles
+    GENDER_ROLES = [];
+    for (const roleDef of GENDER_ROLE_DEFINITIONS) {
+        try {
+            let role = guild.roles.cache.find(r => r.name === roleDef.name);
+            if (!role) {
+                role = await guild.roles.create({
+                    name: roleDef.name,
+                    color: roleDef.color,
+                    hoist: false,
+                    mentionable: false,
+                    reason: 'Auto-created gender role for self-assignment'
+                });
+                console.log(`✅ Created gender role: ${roleDef.name}`);
+            } else {
+                console.log(`⏭️ Gender role exists: ${roleDef.name}`);
+            }
+            GENDER_ROLES.push({
+                id: role.id,
+                label: roleDef.name,
+                emoji: roleDef.emoji,
+                description: roleDef.description
+            });
+        } catch (err) {
+            console.log(`❌ Failed to create gender role ${roleDef.name}: ${err.message}`);
+        }
+    }
+    
+    // Create/find Vore Preference Roles
+    VORE_ROLES = [];
+    for (const roleDef of VORE_ROLE_DEFINITIONS) {
+        try {
+            let role = guild.roles.cache.find(r => r.name === roleDef.name);
+            if (!role) {
+                role = await guild.roles.create({
+                    name: roleDef.name,
+                    color: roleDef.color,
+                    hoist: false,
+                    mentionable: false,
+                    reason: 'Auto-created vore preference role for self-assignment'
+                });
+                console.log(`✅ Created vore role: ${roleDef.name}`);
+            } else {
+                console.log(`⏭️ Vore role exists: ${roleDef.name}`);
+            }
+            VORE_ROLES.push({
+                id: role.id,
+                label: roleDef.name,
+                emoji: roleDef.emoji,
+                description: roleDef.description
+            });
+        } catch (err) {
+            console.log(`❌ Failed to create vore role ${roleDef.name}: ${err.message}`);
+        }
+    }
+    
+    console.log(`✓ Self-assign roles setup complete! Gender: ${GENDER_ROLES.length}, Vore: ${VORE_ROLES.length}`);
+}
+
 // ==================== END SERVER SETUP ====================
 
 // Discord bot ready event
 client.once('ready', async () => {
     console.log(`✓ Discord Bot logged in as ${client.user.tag}`);
     console.log(`✓ Bot is in ${client.guilds.cache.size} server(s)`);
+    
+    // Setup gender and vore roles in all guilds
+    for (const guild of client.guilds.cache.values()) {
+        await setupSelfAssignRoles(guild);
+    }
     
     // Post verification message to channel (if configured)
     if (VERIFY_CHANNEL_ID) {
