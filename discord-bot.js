@@ -1600,6 +1600,13 @@ async function autoAcceptVerifiedGroupRequests() {
     }
 }
 
+// Welcome channel ID for public welcome messages
+const WELCOME_CHANNEL_ID = '1467030660836491315';
+
+// Moderation data storage
+const warnings = new Map(); // Maps `${guildId}-${odId}` to array of warnings
+const modLogs = []; // Array of moderation actions
+
 // Auto-give role when someone joins the server
 client.on('guildMemberAdd', async (member) => {
     console.log(`New member joined: ${member.user.tag}`);
@@ -1610,6 +1617,42 @@ client.on('guildMemberAdd', async (member) => {
             console.log(`✓ Gave auto-role to ${member.user.tag}`);
         } catch (error) {
             console.error(`Failed to give auto-role to ${member.user.tag}:`, error.message);
+        }
+    }
+    
+    // Send welcome message to welcome channel
+    if (WELCOME_CHANNEL_ID) {
+        try {
+            const welcomeChannel = await member.guild.channels.fetch(WELCOME_CHANNEL_ID);
+            if (welcomeChannel) {
+                const memberCount = member.guild.memberCount;
+                const welcomeMessages = [
+                    `🌲 **${member.user.username}** just wandered into the forest!`,
+                    `🌿 Welcome to the park, **${member.user.username}**!`,
+                    `🦊 **${member.user.username}** has entered the forest!`,
+                    `🌳 A wild **${member.user.username}** appeared!`,
+                    `🍃 **${member.user.username}** found their way to the hangout!`
+                ];
+                const randomMessage = welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)];
+                
+                const welcomeEmbed = new EmbedBuilder()
+                    .setColor(0x2D5A27)
+                    .setTitle('🌲 Welcome to Forest Park Hangout!')
+                    .setDescription(randomMessage)
+                    .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
+                    .addFields(
+                        { name: '👤 New Member', value: `${member.user}`, inline: true },
+                        { name: '🔢 Member #', value: `${memberCount}`, inline: true },
+                        { name: '📅 Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true }
+                    )
+                    .setFooter({ text: `Please read the rules and verify to access the server!` })
+                    .setTimestamp();
+                
+                await welcomeChannel.send({ embeds: [welcomeEmbed] });
+                console.log(`✓ Sent welcome message for ${member.user.tag}`);
+            }
+        } catch (err) {
+            console.error(`Failed to send welcome message: ${err.message}`);
         }
     }
     
@@ -1632,6 +1675,28 @@ client.on('guildMemberAdd', async (member) => {
         console.log(`✓ Sent welcome DM to ${member.user.tag}`);
     } catch (dmError) {
         console.error(`Failed to send welcome DM to ${member.user.tag}:`, dmError.message);
+    }
+});
+
+// Goodbye message when someone leaves
+client.on('guildMemberRemove', async (member) => {
+    console.log(`Member left: ${member.user.tag}`);
+    
+    if (WELCOME_CHANNEL_ID) {
+        try {
+            const welcomeChannel = await member.guild.channels.fetch(WELCOME_CHANNEL_ID);
+            if (welcomeChannel) {
+                const goodbyeEmbed = new EmbedBuilder()
+                    .setColor(0x808080)
+                    .setDescription(`🍂 **${member.user.username}** has left the forest. Goodbye!`)
+                    .setFooter({ text: `We now have ${member.guild.memberCount} members` })
+                    .setTimestamp();
+                
+                await welcomeChannel.send({ embeds: [goodbyeEmbed] });
+            }
+        } catch (err) {
+            console.error(`Failed to send goodbye message: ${err.message}`);
+        }
     }
 });
 
@@ -1700,6 +1765,390 @@ client.on('messageCreate', async (message) => {
     
     // Handle server commands (not DMs)
     if (message.guild) {
+        const args = message.content.slice(1).trim().split(/ +/);
+        const command = args.shift()?.toLowerCase();
+        
+        // Check if user is staff/mod
+        const isStaff = message.member?.permissions.has('ModerateMembers') || 
+                        message.member?.permissions.has('KickMembers') ||
+                        message.member?.permissions.has('BanMembers') ||
+                        (STAFF_ROLE_ID && message.member?.roles.cache.has(STAFF_ROLE_ID));
+        const isAdmin = message.member?.permissions.has('Administrator') || 
+                        message.guild.ownerId === message.author.id;
+        
+        // ============ HELP COMMAND ============
+        if (message.content.toLowerCase() === '!help' || message.content.toLowerCase() === '!commands') {
+            const helpEmbed = new EmbedBuilder()
+                .setTitle('🤖 Bot Commands')
+                .setColor(0x00d4ff)
+                .addFields(
+                    { name: '👥 Everyone', value: 
+                        '`!help` - Show this help menu\n' +
+                        '`!serverinfo` - Show server information\n' +
+                        '`!userinfo [@user]` - Show user information\n' +
+                        '`!avatar [@user]` - Show user avatar'
+                    },
+                    { name: '🛡️ Staff Only', value: 
+                        '`!warn @user [reason]` - Warn a user\n' +
+                        '`!warnings @user` - Check user warnings\n' +
+                        '`!clearwarnings @user` - Clear user warnings\n' +
+                        '`!mute @user [duration] [reason]` - Timeout user\n' +
+                        '`!unmute @user` - Remove timeout\n' +
+                        '`!kick @user [reason]` - Kick a user\n' +
+                        '`!ban @user [reason]` - Ban a user\n' +
+                        '`!unban [userID]` - Unban a user\n' +
+                        '`!purge [amount]` - Delete messages (1-100)'
+                    },
+                    { name: '👑 Admin Only', value: 
+                        '`!setupserver` - Setup server channels/roles\n' +
+                        '`!shutdown` - Emergency lockdown\n' +
+                        '`!restore` - Restore from lockdown'
+                    }
+                )
+                .setFooter({ text: 'Forest Park Hangout • Moderation Bot' })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [helpEmbed] });
+        }
+        
+        // ============ SERVER INFO ============
+        if (message.content.toLowerCase() === '!serverinfo') {
+            const guild = message.guild;
+            const embed = new EmbedBuilder()
+                .setTitle(`🌲 ${guild.name}`)
+                .setThumbnail(guild.iconURL({ dynamic: true, size: 256 }))
+                .setColor(0x2D5A27)
+                .addFields(
+                    { name: '👑 Owner', value: `<@${guild.ownerId}>`, inline: true },
+                    { name: '👥 Members', value: `${guild.memberCount}`, inline: true },
+                    { name: '📅 Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:D>`, inline: true },
+                    { name: '🔢 Channels', value: `${guild.channels.cache.size}`, inline: true },
+                    { name: '🎭 Roles', value: `${guild.roles.cache.size}`, inline: true },
+                    { name: '😀 Emojis', value: `${guild.emojis.cache.size}`, inline: true },
+                    { name: '🆔 Server ID', value: `\`${guild.id}\``, inline: false }
+                )
+                .setFooter({ text: `Requested by ${message.author.username}` })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [embed] });
+        }
+        
+        // ============ USER INFO ============
+        if (message.content.toLowerCase().startsWith('!userinfo')) {
+            const target = message.mentions.members.first() || message.member;
+            const embed = new EmbedBuilder()
+                .setTitle(`👤 ${target.user.username}`)
+                .setThumbnail(target.user.displayAvatarURL({ dynamic: true, size: 256 }))
+                .setColor(target.displayHexColor || 0x00d4ff)
+                .addFields(
+                    { name: '🏷️ Tag', value: `${target.user.tag}`, inline: true },
+                    { name: '🆔 ID', value: `\`${target.id}\``, inline: true },
+                    { name: '🤖 Bot', value: target.user.bot ? 'Yes' : 'No', inline: true },
+                    { name: '📅 Account Created', value: `<t:${Math.floor(target.user.createdTimestamp / 1000)}:R>`, inline: true },
+                    { name: '📥 Joined Server', value: `<t:${Math.floor(target.joinedTimestamp / 1000)}:R>`, inline: true },
+                    { name: '🎭 Roles', value: target.roles.cache.filter(r => r.id !== message.guild.id).map(r => r).join(', ') || 'None', inline: false }
+                )
+                .setFooter({ text: `Requested by ${message.author.username}` })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [embed] });
+        }
+        
+        // ============ AVATAR ============
+        if (message.content.toLowerCase().startsWith('!avatar')) {
+            const target = message.mentions.users.first() || message.author;
+            const embed = new EmbedBuilder()
+                .setTitle(`🖼️ ${target.username}'s Avatar`)
+                .setImage(target.displayAvatarURL({ dynamic: true, size: 512 }))
+                .setColor(0x00d4ff)
+                .setFooter({ text: `Requested by ${message.author.username}` })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [embed] });
+        }
+        
+        // ============ WARN COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!warn ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user to warn.');
+            
+            const reason = args.slice(1).join(' ') || 'No reason provided';
+            const warningKey = `${message.guild.id}-${target.id}`;
+            
+            if (!warnings.has(warningKey)) warnings.set(warningKey, []);
+            const userWarnings = warnings.get(warningKey);
+            userWarnings.push({
+                reason,
+                moderator: message.author.id,
+                timestamp: Date.now()
+            });
+            
+            const warnEmbed = new EmbedBuilder()
+                .setTitle('⚠️ User Warned')
+                .setColor(0xFFCC00)
+                .addFields(
+                    { name: '👤 User', value: `${target.user.tag}`, inline: true },
+                    { name: '🛡️ Moderator', value: `${message.author.tag}`, inline: true },
+                    { name: '📝 Reason', value: reason, inline: false },
+                    { name: '⚠️ Total Warnings', value: `${userWarnings.length}`, inline: true }
+                )
+                .setTimestamp();
+            
+            await message.reply({ embeds: [warnEmbed] });
+            
+            // DM the user
+            try {
+                await target.send({
+                    embeds: [new EmbedBuilder()
+                        .setTitle('⚠️ You have been warned')
+                        .setColor(0xFFCC00)
+                        .setDescription(`You received a warning in **${message.guild.name}**`)
+                        .addFields(
+                            { name: '📝 Reason', value: reason },
+                            { name: '⚠️ Total Warnings', value: `${userWarnings.length}` }
+                        )
+                        .setTimestamp()
+                    ]
+                });
+            } catch (e) { /* Can't DM user */ }
+            
+            // Auto-action based on warning count
+            if (userWarnings.length >= 5) {
+                await target.ban({ reason: 'Reached 5 warnings - Auto-ban' });
+                message.channel.send(`🔨 **${target.user.tag}** has been auto-banned for reaching 5 warnings.`);
+            } else if (userWarnings.length >= 3) {
+                await target.timeout(24 * 60 * 60 * 1000, 'Reached 3 warnings - 24h timeout');
+                message.channel.send(`🔇 **${target.user.tag}** has been auto-muted for 24 hours (3 warnings).`);
+            }
+            return;
+        }
+        
+        // ============ WARNINGS CHECK (Staff) ============
+        if (message.content.toLowerCase().startsWith('!warnings ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user.');
+            
+            const warningKey = `${message.guild.id}-${target.id}`;
+            const userWarnings = warnings.get(warningKey) || [];
+            
+            if (userWarnings.length === 0) {
+                return message.reply(`✅ **${target.user.tag}** has no warnings.`);
+            }
+            
+            const warningList = userWarnings.map((w, i) => 
+                `**${i + 1}.** ${w.reason} - <t:${Math.floor(w.timestamp / 1000)}:R>`
+            ).join('\n');
+            
+            const embed = new EmbedBuilder()
+                .setTitle(`⚠️ Warnings for ${target.user.tag}`)
+                .setColor(0xFFCC00)
+                .setDescription(warningList)
+                .setFooter({ text: `Total: ${userWarnings.length} warning(s)` })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [embed] });
+        }
+        
+        // ============ CLEAR WARNINGS (Staff) ============
+        if (message.content.toLowerCase().startsWith('!clearwarnings ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user.');
+            
+            const warningKey = `${message.guild.id}-${target.id}`;
+            warnings.delete(warningKey);
+            
+            return message.reply(`✅ Cleared all warnings for **${target.user.tag}**.`);
+        }
+        
+        // ============ MUTE/TIMEOUT COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!mute ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user to mute.');
+            if (target.id === message.author.id) return message.reply('❌ You cannot mute yourself.');
+            if (target.permissions.has('Administrator')) return message.reply('❌ Cannot mute administrators.');
+            
+            // Parse duration (default 1 hour)
+            let duration = 60 * 60 * 1000; // 1 hour default
+            let durationText = '1 hour';
+            const durationArg = args[1];
+            
+            if (durationArg) {
+                const match = durationArg.match(/^(\d+)(m|h|d)$/i);
+                if (match) {
+                    const num = parseInt(match[1]);
+                    const unit = match[2].toLowerCase();
+                    if (unit === 'm') { duration = num * 60 * 1000; durationText = `${num} minute(s)`; }
+                    if (unit === 'h') { duration = num * 60 * 60 * 1000; durationText = `${num} hour(s)`; }
+                    if (unit === 'd') { duration = num * 24 * 60 * 60 * 1000; durationText = `${num} day(s)`; }
+                }
+            }
+            
+            const reason = args.slice(2).join(' ') || 'No reason provided';
+            
+            try {
+                await target.timeout(duration, reason);
+                
+                const embed = new EmbedBuilder()
+                    .setTitle('🔇 User Muted')
+                    .setColor(0x808080)
+                    .addFields(
+                        { name: '👤 User', value: `${target.user.tag}`, inline: true },
+                        { name: '🛡️ Moderator', value: `${message.author.tag}`, inline: true },
+                        { name: '⏱️ Duration', value: durationText, inline: true },
+                        { name: '📝 Reason', value: reason, inline: false }
+                    )
+                    .setTimestamp();
+                
+                await message.reply({ embeds: [embed] });
+                
+                try {
+                    await target.send({
+                        embeds: [new EmbedBuilder()
+                            .setTitle('🔇 You have been muted')
+                            .setColor(0x808080)
+                            .setDescription(`You have been muted in **${message.guild.name}**`)
+                            .addFields(
+                                { name: '⏱️ Duration', value: durationText },
+                                { name: '📝 Reason', value: reason }
+                            )
+                            .setTimestamp()
+                        ]
+                    });
+                } catch (e) { /* Can't DM user */ }
+            } catch (err) {
+                message.reply(`❌ Failed to mute: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ UNMUTE COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!unmute ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user to unmute.');
+            
+            try {
+                await target.timeout(null);
+                message.reply(`✅ **${target.user.tag}** has been unmuted.`);
+            } catch (err) {
+                message.reply(`❌ Failed to unmute: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ KICK COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!kick ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user to kick.');
+            if (target.id === message.author.id) return message.reply('❌ You cannot kick yourself.');
+            if (!target.kickable) return message.reply('❌ I cannot kick this user. They may have higher permissions.');
+            
+            const reason = args.slice(1).join(' ') || 'No reason provided';
+            
+            try {
+                // DM before kick
+                try {
+                    await target.send({
+                        embeds: [new EmbedBuilder()
+                            .setTitle('👢 You have been kicked')
+                            .setColor(0xFF6B6B)
+                            .setDescription(`You have been kicked from **${message.guild.name}**`)
+                            .addFields({ name: '📝 Reason', value: reason })
+                            .setTimestamp()
+                        ]
+                    });
+                } catch (e) { /* Can't DM user */ }
+                
+                await target.kick(reason);
+                
+                const embed = new EmbedBuilder()
+                    .setTitle('👢 User Kicked')
+                    .setColor(0xFF6B6B)
+                    .addFields(
+                        { name: '👤 User', value: `${target.user.tag}`, inline: true },
+                        { name: '🛡️ Moderator', value: `${message.author.tag}`, inline: true },
+                        { name: '📝 Reason', value: reason, inline: false }
+                    )
+                    .setTimestamp();
+                
+                await message.reply({ embeds: [embed] });
+            } catch (err) {
+                message.reply(`❌ Failed to kick: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ BAN COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!ban ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user to ban.');
+            if (target.id === message.author.id) return message.reply('❌ You cannot ban yourself.');
+            if (!target.bannable) return message.reply('❌ I cannot ban this user. They may have higher permissions.');
+            
+            const reason = args.slice(1).join(' ') || 'No reason provided';
+            
+            try {
+                // DM before ban
+                try {
+                    await target.send({
+                        embeds: [new EmbedBuilder()
+                            .setTitle('🔨 You have been banned')
+                            .setColor(0xFF0000)
+                            .setDescription(`You have been banned from **${message.guild.name}**`)
+                            .addFields({ name: '📝 Reason', value: reason })
+                            .setTimestamp()
+                        ]
+                    });
+                } catch (e) { /* Can't DM user */ }
+                
+                await target.ban({ reason, deleteMessageSeconds: 86400 }); // Delete 24h of messages
+                
+                const embed = new EmbedBuilder()
+                    .setTitle('🔨 User Banned')
+                    .setColor(0xFF0000)
+                    .addFields(
+                        { name: '👤 User', value: `${target.user.tag}`, inline: true },
+                        { name: '🛡️ Moderator', value: `${message.author.tag}`, inline: true },
+                        { name: '📝 Reason', value: reason, inline: false }
+                    )
+                    .setTimestamp();
+                
+                await message.reply({ embeds: [embed] });
+            } catch (err) {
+                message.reply(`❌ Failed to ban: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ UNBAN COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!unban ') && isStaff) {
+            const userId = args[0];
+            if (!userId) return message.reply('❌ Please provide a user ID to unban.');
+            
+            try {
+                await message.guild.members.unban(userId);
+                message.reply(`✅ User \`${userId}\` has been unbanned.`);
+            } catch (err) {
+                message.reply(`❌ Failed to unban: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ PURGE/CLEAR COMMAND (Staff) ============
+        if ((message.content.toLowerCase().startsWith('!purge ') || message.content.toLowerCase().startsWith('!clear ')) && isStaff) {
+            const amount = parseInt(args[0]);
+            if (isNaN(amount) || amount < 1 || amount > 100) {
+                return message.reply('❌ Please provide a number between 1 and 100.');
+            }
+            
+            try {
+                const deleted = await message.channel.bulkDelete(amount + 1, true); // +1 to include command
+                const confirmMsg = await message.channel.send(`🗑️ Deleted **${deleted.size - 1}** messages.`);
+                setTimeout(() => confirmMsg.delete().catch(() => {}), 3000);
+            } catch (err) {
+                message.reply(`❌ Failed to delete messages: ${err.message}`);
+            }
+            return;
+        }
         
         // ============ SHUTDOWN COMMAND (Owner/Admin only) ============
         if (message.content.toLowerCase() === '!shutdown') {
