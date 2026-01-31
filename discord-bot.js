@@ -616,6 +616,34 @@ app.post('/request-verification', async (req, res) => {
                 autoJoin: true
             });
             
+            // Log to Discord channel that a new player joined and needs verification
+            if (client.user && IN_GAME_VERIFICATION_LOG_CHANNEL_ID) {
+                try {
+                    const logChannel = await client.channels.fetch(IN_GAME_VERIFICATION_LOG_CHANNEL_ID);
+                    const { EmbedBuilder } = require('discord.js');
+                    
+                    const joinEmbed = new EmbedBuilder()
+                        .setTitle('🎮 New Player Joined Game')
+                        .setDescription(`A new unverified player has joined the game.`)
+                        .setColor(0xffa500) // Orange for pending
+                        .addFields(
+                            { name: '👤 Roblox Username', value: playerName, inline: true },
+                            { name: '🏷️ Display Name', value: displayName || playerName, inline: true },
+                            { name: '🆔 User ID', value: String(userId), inline: true },
+                            { name: '📅 Account Age', value: accountAge ? `${accountAge} days` : 'Unknown', inline: true },
+                            { name: '🔗 Profile', value: `[View Profile](https://www.roblox.com/users/${robloxUserId || userId}/profile)`, inline: true },
+                            { name: '📋 Status', value: '⏳ Waiting for Discord verification', inline: true }
+                        )
+                        .setTimestamp()
+                        .setFooter({ text: `Verification ID: ${verificationId}` });
+                    
+                    await logChannel.send({ embeds: [joinEmbed] });
+                    console.log(`✓ Logged new player join to Discord: ${playerName}`);
+                } catch (logErr) {
+                    console.error('Failed to log player join to Discord:', logErr.message);
+                }
+            }
+            
             // Auto-expire after 30 minutes for auto-join
             setTimeout(() => {
                 const verification = pendingVerifications.get(verificationId);
