@@ -2267,17 +2267,19 @@ client.on('messageCreate', async (message) => {
                 return message.reply('❌ Only administrators can use this command.');
             }
             
-            if (PING_ROLES.length === 0) {
-                return message.reply('⚠️ No ping roles are configured. Add role IDs to the `PING_ROLES` array in the bot code, or set environment variables:\n`PING_ROLE_ANNOUNCEMENTS`, `PING_ROLE_EVENTS`, `PING_ROLE_UPDATES`, `PING_ROLE_GIVEAWAYS`, `PING_ROLE_POLLS`');
-            }
-            
-            await message.reply('🔄 Posting/updating ping roles message...');
+            await message.reply('🔄 Setting up roles and posting messages...');
             
             try {
+                // First, create/find the gender and vore roles
+                await setupSelfAssignRoles(message.guild);
+                
+                // Then post the role selection messages
                 await postPingRolesMessage();
-                await message.channel.send(`✅ Ping roles message posted to <#${PING_ROLES_CHANNEL_ID}>`);
+                
+                const summary = `✅ Roles setup complete!\n• Ping Roles: ${PING_ROLES.length}\n• Gender Roles: ${GENDER_ROLES.length}\n• Vore Roles: ${VORE_ROLES.length}\n\nMessages posted to <#${PING_ROLES_CHANNEL_ID}>`;
+                await message.channel.send(summary);
             } catch (err) {
-                await message.channel.send(`❌ Failed to post ping roles: ${err.message}`);
+                await message.channel.send(`❌ Failed: ${err.message}`);
             }
             return;
         }
