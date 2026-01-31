@@ -5008,9 +5008,22 @@ app.listen(PORT, () => {
 });
 
 // Login to Discord
-client.login(DISCORD_BOT_TOKEN)
-    .then(() => console.log('Connecting to Discord...'))
-    .catch(err => console.error('Failed to login to Discord:', err));
+if (!DISCORD_BOT_TOKEN) {
+    console.error('❌ DISCORD_BOT_TOKEN is not set! Please add it to your environment variables on Render.');
+    console.error('   Go to Render Dashboard -> Your Service -> Environment -> Add DISCORD_BOT_TOKEN');
+} else {
+    console.log('🔄 Attempting to connect to Discord...');
+    console.log(`   Token starts with: ${DISCORD_BOT_TOKEN.substring(0, 10)}...`);
+    
+    client.login(DISCORD_BOT_TOKEN)
+        .then(() => console.log('✅ Successfully connected to Discord!'))
+        .catch(err => {
+            console.error('❌ Failed to login to Discord:', err.message);
+            console.error('   Full error:', err);
+            console.error('   Make sure your bot token is valid and not expired.');
+            console.error('   You can regenerate it at: https://discord.com/developers/applications');
+        });
+}
 
 // Export for potential use
 module.exports = { app, client, pendingVerifications };
