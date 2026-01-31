@@ -2334,15 +2334,21 @@ client.on('messageCreate', async (message) => {
             
             try {
                 // First, create/find the gender and vore roles
+                console.log('Starting setupSelfAssignRoles...');
                 await setupSelfAssignRoles(message.guild);
+                console.log(`After setup - Gender: ${GENDER_ROLES.length}, Vore: ${VORE_ROLES.length}, Ping: ${PING_ROLES.length}`);
                 
                 // Then post the role selection messages
+                console.log('Starting postPingRolesMessage...');
+                console.log(`Channel ID: ${PING_ROLES_CHANNEL_ID}`);
                 await postPingRolesMessage();
+                console.log('postPingRolesMessage completed');
                 
                 const summary = `✅ Roles setup complete!\n• Ping Roles: ${PING_ROLES.length}\n• Gender Roles: ${GENDER_ROLES.length}\n• Vore Roles: ${VORE_ROLES.length}\n\nMessages posted to <#${PING_ROLES_CHANNEL_ID}>`;
                 await message.channel.send(summary);
             } catch (err) {
-                await message.channel.send(`❌ Failed: ${err.message}`);
+                console.error('!pingroles error:', err);
+                await message.channel.send(`❌ Failed: ${err.message}\n\`\`\`${err.stack?.substring(0, 500)}\`\`\``);
             }
             return;
         }
