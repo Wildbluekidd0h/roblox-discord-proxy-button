@@ -1968,7 +1968,9 @@ client.on('messageCreate', async (message) => {
                         '`!kick @user [reason]` - Kick a user\n' +
                         '`!ban @user [reason]` - Ban a user\n' +
                         '`!unban [userID]` - Unban a user\n' +
-                        '`!purge [amount]` - Delete messages (1-100)'
+                        '`!purge [amount]` - Delete messages (1-100)\n' +
+                        '`!pending` - View pending verifications\n' +
+                        '`!verify <roblox name>` - Verify a player'
                     },
                     { name: '👑 Admin Only', value: 
                         '`!setupserver` - Setup server channels/roles\n' +
@@ -2303,6 +2305,157 @@ client.on('messageCreate', async (message) => {
                 message.reply(`❌ Failed to unban: ${err.message}`);
             }
             return;
+        }
+        
+        // ============ PENDING VERIFICATIONS COMMAND (Staff) ============
+        if ((message.content.toLowerCase() === '!pending' || message.content.toLowerCase() === '!verifylist') && isStaff) {
+            const pending = [];
+            pendingVerifications.forEach((v, id) => {
+                if (v.status === 'pending_staff_review' || v.status === 'awaiting_user_confirm') {
+                    pending.push({ id, ...v });
+                }
+            });
+            
+            if (pending.length === 0) {
+                return message.reply('✅ No pending verifications!');
+            }
+            
+            const embed = new EmbedBuilder()
+                .setTitle('📋 Pending Verifications')
+                .setColor(0xffa500)
+                .setDescription(`There are **${pending.length}** pending verification(s).\nUse \`!verify <roblox username>\` to verify a player.`)
+                .setTimestamp();
+            
+            // Show up to 10 pending
+            const toShow = pending.slice(0, 10);
+            for (const v of toShow) {
+                embed.addFields({
+                    name: `🎮 ${v.playerName || v.displayName || 'Unknown'}`,
+                    value: `**Roblox ID:** ${v.userId || v.robloxUserId}\n**Status:** ${v.status}\n**Discord:** ${v.discordUsername || 'Not linked yet'}`,
+                    inline: true
+                });
+            }
+            
+            if (pending.length > 10) {
+                embed.setFooter({ text: `Showing 10 of ${pending.length} pending verifications` });
+            }
+            
+            return message.reply({ embeds: [embed] });
+        }
+        
+        // ============ VERIFY PLAYER COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!verify ') && isStaff) {
+            const robloxUsername = args.join(' ').trim();
+            if (!robloxUsername) {
+                return message.reply('❌ Usage: `!verify <roblox username>` or `!verify <@discord user>`');
+            }
+            
+            // Check if it's a Discord mention
+            const mentionMatch = robloxUsername.match(/^<@!?(\d+)>$/);
+            let targetDiscordId = mentionMatch ? mentionMatch[1] : null;
+            let targetRobloxUsername = mentionMatch ? null : robloxUsername;
+            
+            // Find the pending verification
+            let foundVerification = null;
+            let foundId = null;
+            
+            for (const [id, v] of pendingVerifications.entries()) {
+                // Match by Roblox username
+                if (targetRobloxUsername && 
+                    (v.playerName?.toLowerCase() === targetRobloxUsername.toLowerCase() ||
+                     v.displayName?.toLowerCase() === targetRobloxUsername.toLowerCase())) {
+                    foundVerification = v;
+                    foundId = id;
+                    break;
+                }
+                // Match by Discord ID
+                if (targetDiscordId && v.discordId === targetDiscordId) {
+                    foundVerification = v;
+                    foundId = id;
+                    break;
+                }
+            }
+            
+            if (!foundVerification) {
+                return message.reply(`❌ No pending verification found for **${robloxUsername}**.\nUse \`!pending\` to see all pending verifications.`);
+            }
+            
+            // Mark as verified
+            foundVerification.status = 'approved';
+            foundVerification.approvedBy = message.author.tag;
+            foundVerification.approvedAt = new Date().toISOString();
+            
+            // Add to verified users if they have a Discord ID
+            if (foundVerification.discordId) {
+                verifiedUsers.set(foundVerification.discordId, {
+                    robloxUsername: foundVerification.playerName,
+                    robloxUserId: foundVerification.robloxUserId || foundVerification.userId,
+                    robloxDisplayName: foundVerification.displayName,
+                    discordId: foundVerification.discordId,
+                    verifiedAt: new Date().toISOString(),
+                    approvedBy: message.author.tag
+                });
+                
+                // Remember the link
+                robloxToDiscord.set(String(foundVerification.robloxUserId || foundVerification.userId), foundVerification.discordId);
+                discordToRoblox.set(foundVerification.discordId, foundVerification.robloxUserId || foundVerification.userId);
+                
+                // Try to give verified role
+                if (VERIFIED_ROLE_ID) {
+                    try {
+                        const member = await message.guild.members.fetch(foundVerification.discordId);
+                        await member.roles.add(VERIFIED_ROLE_ID);
+                        console.log(`✓ Gave verified role to ${member.user.tag}`);
+                    } catch (roleErr) {
+                        console.log(`Could not give verified role: ${roleErr.message}`);
+                    }
+                }
+                
+                // Try to DM the user
+                try {
+                    const discordUser = await client.users.fetch(foundVerification.discordId);
+                    const dmEmbed = new EmbedBuilder()
+                        .setTitle('✅ Verification Approved!')
+                        .setDescription(`Your Roblox account **${foundVerification.playerName}** has been verified by staff!\n\nYou now have full access to the game.`)
+                        .setColor(0x00ff00)
+                        .setTimestamp();
+                    await discordUser.send({ embeds: [dmEmbed] });
+                } catch (dmErr) {
+                    console.log(`Could not DM user: ${dmErr.message}`);
+                }
+            }
+            
+            // Log to verification channel
+            if (IN_GAME_VERIFICATION_LOG_CHANNEL_ID) {
+                try {
+                    const logChannel = await client.channels.fetch(IN_GAME_VERIFICATION_LOG_CHANNEL_ID);
+                    const logEmbed = new EmbedBuilder()
+                        .setTitle('✅ Player Verified by Staff')
+                        .setColor(0x00ff00)
+                        .addFields(
+                            { name: '🎮 Roblox', value: `${foundVerification.playerName} (${foundVerification.userId || foundVerification.robloxUserId})`, inline: true },
+                            { name: '💬 Discord', value: foundVerification.discordId ? `<@${foundVerification.discordId}>` : 'Not linked', inline: true },
+                            { name: '👮 Verified By', value: message.author.tag, inline: true }
+                        )
+                        .setTimestamp();
+                    await logChannel.send({ embeds: [logEmbed] });
+                } catch (logErr) {
+                    console.log(`Could not log verification: ${logErr.message}`);
+                }
+            }
+            
+            const successEmbed = new EmbedBuilder()
+                .setTitle('✅ Player Verified!')
+                .setColor(0x00ff00)
+                .addFields(
+                    { name: '🎮 Roblox Username', value: foundVerification.playerName || 'Unknown', inline: true },
+                    { name: '🆔 Roblox ID', value: String(foundVerification.userId || foundVerification.robloxUserId), inline: true },
+                    { name: '💬 Discord', value: foundVerification.discordId ? `<@${foundVerification.discordId}>` : 'Not linked yet', inline: true }
+                )
+                .setFooter({ text: `Verified by ${message.author.tag}` })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [successEmbed] });
         }
         
         // ============ PURGE/CLEAR COMMAND (Staff) ============
