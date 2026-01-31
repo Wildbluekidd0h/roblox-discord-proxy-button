@@ -1232,50 +1232,64 @@ async function setupServer(guild) {
             const hasRules = existingMessages.some(m => 
                 m.author.id === client.user.id && 
                 m.embeds.length > 0 && 
-                m.embeds[0].title?.includes('Server Rules')
+                m.embeds[0].title?.includes('PARK RULES')
             );
             
             if (hasRules) {
                 console.log('⏭️ Rules already posted, skipping');
             } else {
                 const rulesEmbed = new EmbedBuilder()
-                    .setTitle('📜 Forest Park Hangout – Server Rules')
-                    .setDescription('Welcome to **Forest Park Hangout**! This is an 18+ community. Please read and follow all rules to keep our space safe and welcoming for everyone.')
-                    .setColor(0x87CEEB)
-                    .addFields(
-                        { name: '🔞 Age Requirement', value: 
-                            '• You must be **18 years or older** to be in this server\n' +
-                            '• Lying about your age = immediate permanent ban\n' +
-                            '• No minors allowed under any circumstances'
-                        },
-                        { name: '💬 Behavior & Chat', value: 
-                            '• Treat everyone with respect\n' +
-                            '• No harassment, bullying, or discrimination\n' +
-                            '• No spam, excessive caps, or flooding\n' +
-                            '• Keep drama out of public channels\n' +
-                            '• English only in public channels'
-                        },
-                        { name: '🔒 Safety & Privacy', value: 
-                            '• Never share personal info (yours or others)\n' +
-                            '• No doxxing or threats\n' +
-                            '• No unsolicited DMs, especially NSFW\n' +
-                            '• Report issues to staff, don\'t escalate'
-                        },
-                        { name: '🎮 Roblox & Game Rules', value: 
-                            '• Verify your Roblox account to access game features\n' +
-                            '• No exploiting, hacking, or cheating\n' +
-                            '• In-game harassment = Discord punishment\n' +
-                            '• Follow the same rules in Forest Park Hangout'
-                        },
-                        { name: '⚖️ Moderation', value: 
-                            '• Staff decisions are final\n' +
-                            '• Loopholes = rule breaking\n' +
-                            '• Alt accounts to evade bans = all accounts banned\n' +
-                            '• Appeal through proper channels, not public drama'
-                        },
-                        { name: '⚠️ Consequences', value: 'Breaking rules may result in: warnings, mutes, kicks, or permanent bans depending on severity.' }
+                    .setTitle('🌲 PARK RULES 🌲')
+                    .setColor(0x2D5A27)
+                    .setDescription(
+                        '```\n' +
+                        '╔══════════════════════════════════════╗\n' +
+                        '║     FOREST PARK HANGOUT • 18+        ║\n' +
+                        '╚══════════════════════════════════════╝\n' +
+                        '```\n' +
+                        'Welcome! Please read and follow all rules.'
                     )
-                    .setFooter({ text: 'By being here, you agree to follow all rules. • Last Updated: January 2026' })
+                    .addFields(
+                        { name: '───────── AGE & ENTRY ─────────', value: 
+                            '```\n' +
+                            '1. Must be 18+ to join\n' +
+                            '2. No lying about your age\n' +
+                            '3. Complete verification to access server\n' +
+                            '```'
+                        },
+                        { name: '───────── BEHAVIOR ─────────', value: 
+                            '```\n' +
+                            '4. Be respectful to everyone\n' +
+                            '5. No harassment or bullying\n' +
+                            '6. No spam or flooding\n' +
+                            '7. Keep drama out of public channels\n' +
+                            '8. English only in public channels\n' +
+                            '```'
+                        },
+                        { name: '───────── SAFETY ─────────', value: 
+                            '```\n' +
+                            '9.  No sharing personal info\n' +
+                            '10. No doxxing or threats\n' +
+                            '11. No unsolicited DMs\n' +
+                            '12. Report issues to staff\n' +
+                            '```'
+                        },
+                        { name: '───────── ROBLOX ─────────', value: 
+                            '```\n' +
+                            '13. Verify your Roblox account\n' +
+                            '14. No exploiting or hacking\n' +
+                            '15. In-game rules apply here too\n' +
+                            '```'
+                        },
+                        { name: '───────── MODERATION ─────────', value: 
+                            '```\n' +
+                            '16. Staff decisions are final\n' +
+                            '17. No loopholes or rule-lawyering\n' +
+                            '18. No alt accounts to evade bans\n' +
+                            '```'
+                        }
+                    )
+                    .setFooter({ text: '⚠️ Breaking rules = warn → mute → kick → ban' })
                     .setTimestamp();
                 
                 await rulesChannel.send({ embeds: [rulesEmbed] });
