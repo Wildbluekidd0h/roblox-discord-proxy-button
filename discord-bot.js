@@ -37,15 +37,52 @@ const REQUIRE_MATCHING_DISPLAY_NAME = process.env.REQUIRE_MATCHING_DISPLAY_NAME 
 // Verification channel where the verify button will be posted
 const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID || process.env.DISCORD_VERIFICATION_CHANNEL_ID;
 
-// Role to give to new members when they join the server
-const AUTO_ROLE_ID = '1462613689168302183';
+// Role to give to new members when they join the server (run !setupserver to create)
+const AUTO_ROLE_ID = process.env.AUTO_ROLE_ID || null;
 
 // Additional role to give when verified (e.g., member role)
-const VERIFIED_MEMBER_ROLE_ID = '1336560854199439411';
+const VERIFIED_MEMBER_ROLE_ID = process.env.VERIFIED_MEMBER_ROLE_ID || null;
 
-// Manual verification channels
-const VERIFICATION_LOG_CHANNEL_ID = '1386815060428722196';
-const HOW_TO_VERIFY_CHANNEL_ID = '1462633444407513118';
+// Manual verification channels (run !setupserver to create)
+const VERIFICATION_LOG_CHANNEL_ID = process.env.VERIFICATION_LOG_CHANNEL_ID || '1467019082409840672';
+const HOW_TO_VERIFY_CHANNEL_ID = process.env.HOW_TO_VERIFY_CHANNEL_ID || null;
+
+// In-game verification logs channel (logs when people verify in-game)
+const IN_GAME_VERIFICATION_LOG_CHANNEL_ID = process.env.IN_GAME_VERIFICATION_LOG_CHANNEL_ID || '1467045351969128530';
+
+// Ping roles channel - where users can get notification roles
+const PING_ROLES_CHANNEL_ID = process.env.PING_ROLES_CHANNEL_ID || '1467184314675494996';
+
+// Ping roles configuration - add your role IDs here
+// Format: { id: 'ROLE_ID', label: 'Button Label', emoji: 'emoji', description: 'What this role is for' }
+const PING_ROLES = [
+    { id: '1467184546918174937', label: 'Game Ping', emoji: '🎮', description: 'Get pinged for game sessions' },
+    { id: '1467184619748327485', label: 'Server Ping', emoji: '📢', description: 'Get pinged for server announcements' },
+    { id: '1467184650983051418', label: 'Giveaway Ping', emoji: '🎁', description: 'Get pinged for giveaways' },
+    { id: '1467184692347539664', label: 'Poll Ping', emoji: '📊', description: 'Get pinged for polls and voting' },
+    { id: '1467184731664941189', label: 'Sneaks Ping', emoji: '👀', description: 'Get pinged for sneak peeks' },
+    { id: '1467184771473084503', label: 'Looking Ping', emoji: '🔍', description: 'Get pinged when people are looking for others' },
+    { id: '1467184835687612476', label: 'Update Ping', emoji: '🆕', description: 'Get pinged for updates' },
+].filter(role => role.id); // Only include roles that have IDs set
+
+// Gender roles configuration - will be auto-created if they don't exist
+const GENDER_ROLE_DEFINITIONS = [
+    { name: 'Male', emoji: '♂️', color: '#3498db', description: 'Male' },
+    { name: 'Female', emoji: '♀️', color: '#e91e63', description: 'Female' },
+    { name: 'Non-Binary', emoji: '⚧️', color: '#9b59b6', description: 'Non-Binary' },
+    { name: 'Other', emoji: '🌈', color: '#2ecc71', description: 'Other' },
+];
+
+// Vore preference roles configuration - will be auto-created if they don't exist
+const VORE_ROLE_DEFINITIONS = [
+    { name: 'Switch', emoji: '🔄', color: '#f39c12', description: 'Both pred and prey' },
+    { name: 'Pred', emoji: '🦁', color: '#e74c3c', description: 'Predator' },
+    { name: 'Prey', emoji: '🐰', color: '#3498db', description: 'Prey' },
+];
+
+// These will be populated when roles are created/found
+let GENDER_ROLES = [];
+let VORE_ROLES = [];
 
 // Roblox Group Configuration
 const ROBLOX_GROUP_ID = process.env.ROBLOX_GROUP_ID || null; // Your Roblox group ID
@@ -56,21 +93,22 @@ const pendingManualVerifications = new Map();
 
 // DM Verification Questions
 const VERIFICATION_QUESTIONS = [
-    { key: 'birthdate', question: '**Question 1/15:** What is your birthdate? (MM/DD/YYYY or DD/MM/YYYY)\n*We use this to confirm your age. You must be 13 or older to join.*' },
-    { key: 'nextBirthdayAge', question: '**Question 2/15:** How old will you be on your next birthday?' },
-    { key: 'voreServers', question: '**Question 3/15:** List any vore-related servers you are currently in.\n*Include server names or links. If none, explain why you joined this server.*' },
-    { key: 'whyJoin', question: '**Question 4/15:** Why did you decide to join Forest Park Hangout?' },
-    { key: 'interests', question: '**Question 5/15:** What about this server interests you?' },
-    { key: 'rulesQuote', question: '**Question 6/15:** Quote 3 rules from our server and explain what they mean in your own words.\n*This shows you\'ve read and understand the rules.*' },
-    { key: 'howFound', question: '**Question 7/15:** How did you find this server?\n*Be specific: invite from a friend, Discord search, another server, etc.*' },
-    { key: 'timezone', question: '**Question 8/15:** What timezone are you in?\n*e.g. EST, PST, GMT, UTC+2*' },
-    { key: 'bannedBefore', question: '**Question 9/15:** Have you been banned from any Discord servers before?\n*If yes, explain which servers and why. If no, just say No.*' },
-    { key: 'altAccounts', question: '**Question 10/15:** Do you have any alt Discord accounts?\n*If yes, list them. If no, just say No.*' },
-    { key: 'voreMeaning', question: '**Question 11/15:** (Optional) What does vore mean to you?\n*You can skip this by typing "skip"*' },
-    { key: 'robloxUsername', question: '**Question 12/15:** What is your Roblox username?\n*Your actual username, not display name. We will verify you own this account.*' },
-    { key: 'playedBefore', question: '**Question 13/15:** Have you played Forest Park Hangout on Roblox before?\n*If yes, what features or areas have you explored?*' },
-    { key: 'comfortableRules', question: '**Question 14/15:** Are you comfortable following all server rules?\n*Explain how you make sure to follow community rules.*' },
-    { key: 'experienceHoping', question: '**Question 15/15:** What kind of experience are you hoping to have here?\n*e.g. roleplay, social hangout, exploration, events...*' }
+    { key: 'birthdate', question: '**Question 1/16:** What is your birthdate? (MM/DD/YYYY or DD/MM/YYYY)\n*We use this to confirm your age. You must be 18 or older to join this community.*' },
+    { key: 'nextBirthdayAge', question: '**Question 2/16:** How old will you be on your next birthday?' },
+    { key: 'voreServers', question: '**Question 3/16:** List any vore-related servers you are currently in.\n*Include server names or links. If none, explain why you joined this server.*' },
+    { key: 'whyJoin', question: '**Question 4/16:** Why did you decide to join Forest Park Hangout?' },
+    { key: 'interests', question: '**Question 5/16:** What about this server interests you?' },
+    { key: 'rulesQuote', question: '**Question 6/16:** Quote 3 rules from our server and explain what they mean in your own words.\n*This shows you\'ve read and understand the rules.*' },
+    { key: 'friendReferral', question: '**Question 7/16:** Were you invited by a friend? If yes, please tell us their Discord username or server nickname.\n*If not invited by a friend, just say No.*' },
+    { key: 'howFound', question: '**Question 8/16:** How did you find this server?\n*Be specific: invite from a friend, Discord search, another server, etc.*' },
+    { key: 'timezone', question: '**Question 9/16:** What timezone are you in?\n*e.g. EST, PST, GMT, UTC+2*' },
+    { key: 'bannedBefore', question: '**Question 10/16:** Have you been banned from any Discord servers before?\n*If yes, explain which servers and why. If no, just say No.*' },
+    { key: 'altAccounts', question: '**Question 11/16:** Do you have any alt Discord accounts?\n*If yes, list them. If no, just say No.*' },
+    { key: 'voreMeaning', question: '**Question 12/16:** (Optional) What does vore mean to you?\n*You can skip this by typing "skip"*' },
+    { key: 'robloxUsername', question: '**Question 13/16:** What is your Roblox username?\n*Your actual username, not display name. We will verify you own this account.*' },
+    { key: 'playedBefore', question: '**Question 14/16:** Have you played Forest Park Hangout on Roblox before?\n*If yes, what features or areas have you explored?*' },
+    { key: 'comfortableRules', question: '**Question 15/16:** Are you comfortable following all server rules?\n*Explain how you make sure to follow community rules.*' },
+    { key: 'experienceHoping', question: '**Question 16/16:** What kind of experience are you hoping to have here?\n*e.g. roleplay, social hangout, exploration, events...*' }
 ];
 
 // Create Discord client
@@ -1006,10 +1044,449 @@ app.post('/api/group/accept-all-verified', async (req, res) => {
 
 // ==================== END GROUP MANAGEMENT ====================
 
+// ==================== SERVER SETUP COMMAND ====================
+// Run !setupserver once to create all channels and roles
+
+async function setupServer(guild) {
+    const results = { roles: {}, channels: {}, categories: {} };
+    
+    console.log('🚀 Starting server setup...');
+    
+    // ========== CREATE ROLES (bottom to top order) ==========
+    const rolesToCreate = [
+        { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
+        { name: '🌟 Boosters', color: '#f47fff', hoist: true },
+        { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
+        { name: '🔴 Banned from Game', color: '#ff0000', hoist: false },
+        { name: '⚠️ Warned', color: '#ffcc00', hoist: false },
+        { name: '🔇 Muted', color: '#808080', hoist: false },
+        { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
+        { name: '🎮 Verified Player', color: '#2ecc71', hoist: true },
+        { name: '✅ Verified', color: '#3498db', hoist: true },
+        { name: '⏳ Unverified', color: '#95a5a6', hoist: true },
+        { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
+        { name: '🎉 Event Team', color: '#e91e63', hoist: true },
+        { name: '🛡️ Moderator', color: '#e67e22', hoist: true },
+        { name: '⚔️ Admin', color: '#e74c3c', hoist: true },
+        { name: '👑 Owner', color: '#f1c40f', hoist: true },
+    ];
+    
+    for (const roleData of rolesToCreate) {
+        try {
+            const existingRole = guild.roles.cache.find(r => r.name === roleData.name);
+            if (!existingRole) {
+                const role = await guild.roles.create({
+                    name: roleData.name,
+                    color: roleData.color,
+                    hoist: roleData.hoist,
+                    mentionable: false
+                });
+                results.roles[roleData.name] = role.id;
+                console.log(`✅ Created role: ${roleData.name}`);
+            } else {
+                results.roles[roleData.name] = existingRole.id;
+                console.log(`⏭️ Role exists: ${roleData.name}`);
+            }
+        } catch (err) {
+            console.log(`❌ Failed to create role ${roleData.name}: ${err.message}`);
+        }
+    }
+    
+    // Get role references for permissions
+    const everyoneRole = guild.roles.everyone;
+    const verifiedRole = guild.roles.cache.find(r => r.name === '✅ Verified');
+    const unverifiedRole = guild.roles.cache.find(r => r.name === '⏳ Unverified');
+    const staffRole = guild.roles.cache.find(r => r.name === '🛡️ Moderator');
+    const adminRole = guild.roles.cache.find(r => r.name === '⚔️ Admin');
+    
+    // ========== CREATE CATEGORIES AND CHANNELS ==========
+    const serverStructure = [
+        {
+            name: '📢 INFORMATION',
+            channels: [
+                { name: '📜・rules', type: 0, topic: 'Server rules and guidelines', isRulesChannel: true },
+                { name: '📣・announcements', type: 0, topic: 'Important server announcements' },
+                { name: '🎉・giveaways', type: 0, topic: 'Server giveaways and events' },
+                { name: '📝・changelog', type: 0, topic: 'Updates and changes to the server' },
+                { name: '🔗・socials', type: 0, topic: 'Our social media and links' },
+            ]
+        },
+        {
+            name: '🔐 VERIFICATION',
+            channels: [
+                { name: '❓・how-to-verify', type: 0, topic: 'Instructions on how to verify your account', isVerifyChannel: true },
+                { name: '✅・verify-here', type: 0, topic: 'Click the button to start verification' },
+            ]
+        },
+        {
+            name: '💬 COMMUNITY',
+            verifiedOnly: true,
+            channels: [
+                { name: '👋・introductions', type: 0, topic: 'Introduce yourself to the community!' },
+                { name: '💭・general', type: 0, topic: 'General chat for everyone' },
+                { name: '🎮・gaming', type: 0, topic: 'Talk about games' },
+                { name: '🖼️・media', type: 0, topic: 'Share images, videos, and memes' },
+                { name: '🤖・bot-commands', type: 0, topic: 'Use bot commands here' },
+            ]
+        },
+        {
+            name: '🎮 ROBLOX',
+            verifiedOnly: true,
+            channels: [
+                { name: '🏠・forest-park-chat', type: 0, topic: 'Chat about Forest Park Hangout' },
+                { name: '📸・screenshots', type: 0, topic: 'Share your in-game screenshots' },
+                { name: '💡・suggestions', type: 0, topic: 'Suggest features for the game' },
+                { name: '🐛・bug-reports', type: 0, topic: 'Report bugs in the game' },
+            ]
+        },
+        {
+            name: '🔊 VOICE CHANNELS',
+            verifiedOnly: true,
+            channels: [
+                { name: '🎙️ General Voice', type: 2 },
+                { name: '🎮 Gaming', type: 2 },
+                { name: '🎵 Music', type: 2 },
+                { name: '🔒 Private (2 max)', type: 2, userLimit: 2 },
+            ]
+        },
+        {
+            name: '🛡️ STAFF AREA',
+            staffOnly: true,
+            channels: [
+                { name: '📋・staff-chat', type: 0, topic: 'Staff discussion' },
+                { name: '📝・verification-logs', type: 0, topic: 'Verification request logs', isLogChannel: true },
+                { name: '🔨・mod-logs', type: 0, topic: 'Moderation action logs' },
+                { name: '📊・staff-commands', type: 0, topic: 'Bot commands for staff' },
+                { name: '🎙️ Staff Voice', type: 2 },
+            ]
+        },
+        {
+            name: '⚙️ ADMIN',
+            adminOnly: true,
+            channels: [
+                { name: '🔐・admin-chat', type: 0, topic: 'Admin only discussion' },
+                { name: '📜・audit-logs', type: 0, topic: 'Server audit logs' },
+                { name: '🤖・bot-config', type: 0, topic: 'Bot configuration' },
+            ]
+        }
+    ];
+    
+    for (const category of serverStructure) {
+        try {
+            // Check if category exists
+            let cat = guild.channels.cache.find(c => c.name === category.name && c.type === 4);
+            
+            if (!cat) {
+                // Set up category permissions
+                const permissionOverwrites = [
+                    { id: everyoneRole.id, deny: ['ViewChannel'] }
+                ];
+                
+                if (category.staffOnly && staffRole) {
+                    permissionOverwrites.push({ id: staffRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'] });
+                    if (adminRole) permissionOverwrites.push({ id: adminRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory', 'ManageMessages'] });
+                } else if (category.adminOnly && adminRole) {
+                    permissionOverwrites.push({ id: adminRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory', 'ManageMessages'] });
+                } else if (category.verifiedOnly && verifiedRole) {
+                    permissionOverwrites.push({ id: verifiedRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'] });
+                } else {
+                    // Public category (like INFORMATION and VERIFICATION)
+                    permissionOverwrites[0] = { id: everyoneRole.id, allow: ['ViewChannel', 'ReadMessageHistory'], deny: ['SendMessages'] };
+                }
+                
+                cat = await guild.channels.create({
+                    name: category.name,
+                    type: 4, // Category
+                    permissionOverwrites
+                });
+                console.log(`✅ Created category: ${category.name}`);
+            } else {
+                console.log(`⏭️ Category exists: ${category.name}`);
+            }
+            
+            results.categories[category.name] = cat.id;
+            
+            // Create channels in this category
+            for (const channelData of category.channels) {
+                try {
+                    const existingChannel = guild.channels.cache.find(c => c.name === channelData.name && c.parentId === cat.id);
+                    
+                    if (!existingChannel) {
+                        const channelOptions = {
+                            name: channelData.name,
+                            type: channelData.type, // 0 = text, 2 = voice
+                            parent: cat.id,
+                            topic: channelData.topic || null
+                        };
+                        
+                        if (channelData.userLimit) {
+                            channelOptions.userLimit = channelData.userLimit;
+                        }
+                        
+                        const channel = await guild.channels.create(channelOptions);
+                        results.channels[channelData.name] = channel.id;
+                        console.log(`  ✅ Created channel: ${channelData.name}`);
+                        
+                        // Mark special channels
+                        if (channelData.isVerifyChannel) {
+                            results.verifyChannelId = channel.id;
+                        }
+                        if (channelData.isLogChannel) {
+                            results.logChannelId = channel.id;
+                        }
+                        if (channelData.isRulesChannel) {
+                            results.rulesChannelId = channel.id;
+                        }
+                    } else {
+                        results.channels[channelData.name] = existingChannel.id;
+                        if (channelData.isVerifyChannel) {
+                            results.verifyChannelId = existingChannel.id;
+                        }
+                        if (channelData.isLogChannel) {
+                            results.logChannelId = existingChannel.id;
+                        }
+                        if (channelData.isRulesChannel) {
+                            results.rulesChannelId = existingChannel.id;
+                        }
+                        console.log(`  ⏭️ Channel exists: ${channelData.name}`);
+                    }
+                } catch (err) {
+                    console.log(`  ❌ Failed to create channel ${channelData.name}: ${err.message}`);
+                }
+            }
+        } catch (err) {
+            console.log(`❌ Failed to create category ${category.name}: ${err.message}`);
+        }
+    }
+    
+    // ========== POST RULES ==========
+    if (results.rulesChannelId) {
+        try {
+            const rulesChannel = await guild.channels.fetch(results.rulesChannelId);
+            
+            // Check if rules already posted
+            const existingMessages = await rulesChannel.messages.fetch({ limit: 10 });
+            const hasRules = existingMessages.some(m => 
+                m.author.id === client.user.id && 
+                m.embeds.length > 0 && 
+                m.embeds[0].title?.includes('PARK RULES')
+            );
+            
+            if (hasRules) {
+                console.log('⏭️ Rules already posted, skipping');
+            } else {
+                const rulesEmbed = new EmbedBuilder()
+                    .setTitle('🌲 PARK RULES 🌲')
+                    .setColor(0x2D5A27)
+                    .setDescription(
+                        '```\n' +
+                        '╔══════════════════════════════════════╗\n' +
+                        '║     FOREST PARK HANGOUT • 18+        ║\n' +
+                        '╚══════════════════════════════════════╝\n' +
+                        '```\n' +
+                        'Welcome! Please read and follow all rules.'
+                    )
+                    .addFields(
+                        { name: '───────── AGE & ENTRY ─────────', value: 
+                            '```\n' +
+                            '1. Must be 18+ to join\n' +
+                            '2. No lying about your age\n' +
+                            '3. Complete verification to access server\n' +
+                            '```'
+                        },
+                        { name: '───────── BEHAVIOR ─────────', value: 
+                            '```\n' +
+                            '4. Be respectful to everyone\n' +
+                            '5. No harassment or bullying\n' +
+                            '6. No spam or flooding\n' +
+                            '7. Keep drama out of public channels\n' +
+                            '8. English only in public channels\n' +
+                            '```'
+                        },
+                        { name: '───────── SAFETY ─────────', value: 
+                            '```\n' +
+                            '9.  No sharing personal info\n' +
+                            '10. No doxxing or threats\n' +
+                            '11. No unsolicited DMs\n' +
+                            '12. Report issues to staff\n' +
+                            '```'
+                        },
+                        { name: '───────── ROBLOX ─────────', value: 
+                            '```\n' +
+                            '13. Verify your Roblox account\n' +
+                            '14. No exploiting or hacking\n' +
+                            '15. In-game rules apply here too\n' +
+                            '```'
+                        },
+                        { name: '───────── MODERATION ─────────', value: 
+                            '```\n' +
+                            '16. Staff decisions are final\n' +
+                            '17. No loopholes or rule-lawyering\n' +
+                            '18. No alt accounts to evade bans\n' +
+                            '```'
+                        }
+                    )
+                    .setFooter({ text: '⚠️ Breaking rules = warn → mute → kick → ban' })
+                    .setTimestamp();
+                
+                await rulesChannel.send({ embeds: [rulesEmbed] });
+                console.log('✅ Posted rules to rules channel');
+            }
+        } catch (err) {
+            console.log(`❌ Failed to post rules: ${err.message}`);
+        }
+    }
+    
+    // ========== POST VERIFICATION INSTRUCTIONS ==========
+    if (results.verifyChannelId) {
+        try {
+            const verifyChannel = await guild.channels.fetch(results.verifyChannelId);
+            
+            // Check if verification instructions already posted
+            const existingMessages = await verifyChannel.messages.fetch({ limit: 10 });
+            const hasVerify = existingMessages.some(m => 
+                m.author.id === client.user.id && 
+                m.components.length > 0 &&
+                m.components[0]?.components[0]?.customId === 'start_manual_verification'
+            );
+            
+            if (hasVerify) {
+                console.log('⏭️ Verification instructions already posted, skipping');
+            } else {
+                const verifyEmbed = new EmbedBuilder()
+                    .setTitle('🔞 Welcome to Forest Park Hangout – 18+ Verification Required')
+                    .setDescription('**This is an 18+ community.** To keep our community safe and friendly, all visitors must complete age verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
+                    .setColor(0x87CEEB)
+                    .addFields(
+                        { name: '🔐 Part 1 - Identity & Age Verification:', value: 
+                            '1. What is your birthdate? (MM/DD/YYYY)\n' +
+                            '2. How old will you be on your next birthday?\n' +
+                            '3. List any vore-related servers you are currently in\n' +
+                            '4. Why did you decide to join Forest Park Hangout?\n' +
+                            '5. Quote 3 rules & explain them in your own words\n' +
+                            '6. **Were you invited by a friend? If yes, who?**'
+                        },
+                        { name: '🔐 Part 2 - About You:', value: 
+                            '7. How did you find this server?\n' +
+                            '8. What timezone are you in?\n' +
+                            '9. Have you been banned from any Discord servers?\n' +
+                            '10. Do you have any alt Discord accounts?\n' +
+                            '11. (Optional) What does vore mean to you?'
+                        },
+                        { name: '🔐 Part 3 - Roblox & Final Questions:', value: 
+                            '12. What is your Roblox username?\n' +
+                            '13. Have you played Forest Park Hangout before?\n' +
+                            '14. Are you comfortable following all server rules?\n' +
+                            '15. What experience are you hoping to have?\n' +
+                            '16. Anything else you want staff to know?'
+                        },
+                        { name: '👥 Invited by a Friend?', value: 'If you were invited by a friend, please let us know who invited you!' },
+                        { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
+                        { name: '🚨 Note', value: 'If your answers don\'t match or you appear to be under 18, your verification will be denied.\n\nIf you need help, contact staff.' }
+                    )
+                    .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' });
+                
+                const verifyButton = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('start_manual_verification')
+                            .setLabel('📝 Start 18+ Verification')
+                            .setStyle(ButtonStyle.Success)
+                    );
+                
+                await verifyChannel.send({ embeds: [verifyEmbed], components: [verifyButton] });
+                console.log('✅ Posted verification instructions to verify channel');
+            }
+        } catch (err) {
+            console.log(`❌ Failed to post verification instructions: ${err.message}`);
+        }
+    }
+    
+    console.log('🎉 Server setup complete!');
+    console.log('\n📋 IMPORTANT IDs TO UPDATE IN CODE:');
+    console.log(`AUTO_ROLE_ID (Unverified): ${results.roles['⏳ Unverified'] || 'Not created'}`);
+    console.log(`VERIFIED_MEMBER_ROLE_ID: ${results.roles['✅ Verified'] || 'Not created'}`);
+    console.log(`STAFF_ROLE_ID: ${results.roles['🛡️ Moderator'] || 'Not created'}`);
+    console.log(`HOW_TO_VERIFY_CHANNEL_ID: ${results.verifyChannelId || 'Not created'}`);
+    console.log(`VERIFICATION_LOG_CHANNEL_ID: ${results.logChannelId || 'Not created'}`);
+    
+    return results;
+}
+
+// Setup self-assignable roles (gender, vore preferences)
+async function setupSelfAssignRoles(guild) {
+    console.log(`🔧 Setting up self-assign roles in ${guild.name}...`);
+    
+    // Create/find Gender Roles
+    GENDER_ROLES = [];
+    for (const roleDef of GENDER_ROLE_DEFINITIONS) {
+        try {
+            let role = guild.roles.cache.find(r => r.name === roleDef.name);
+            if (!role) {
+                role = await guild.roles.create({
+                    name: roleDef.name,
+                    color: roleDef.color,
+                    hoist: false,
+                    mentionable: false,
+                    reason: 'Auto-created gender role for self-assignment'
+                });
+                console.log(`✅ Created gender role: ${roleDef.name}`);
+            } else {
+                console.log(`⏭️ Gender role exists: ${roleDef.name}`);
+            }
+            GENDER_ROLES.push({
+                id: role.id,
+                label: roleDef.name,
+                emoji: roleDef.emoji,
+                description: roleDef.description
+            });
+        } catch (err) {
+            console.log(`❌ Failed to create gender role ${roleDef.name}: ${err.message}`);
+        }
+    }
+    
+    // Create/find Vore Preference Roles
+    VORE_ROLES = [];
+    for (const roleDef of VORE_ROLE_DEFINITIONS) {
+        try {
+            let role = guild.roles.cache.find(r => r.name === roleDef.name);
+            if (!role) {
+                role = await guild.roles.create({
+                    name: roleDef.name,
+                    color: roleDef.color,
+                    hoist: false,
+                    mentionable: false,
+                    reason: 'Auto-created vore preference role for self-assignment'
+                });
+                console.log(`✅ Created vore role: ${roleDef.name}`);
+            } else {
+                console.log(`⏭️ Vore role exists: ${roleDef.name}`);
+            }
+            VORE_ROLES.push({
+                id: role.id,
+                label: roleDef.name,
+                emoji: roleDef.emoji,
+                description: roleDef.description
+            });
+        } catch (err) {
+            console.log(`❌ Failed to create vore role ${roleDef.name}: ${err.message}`);
+        }
+    }
+    
+    console.log(`✓ Self-assign roles setup complete! Gender: ${GENDER_ROLES.length}, Vore: ${VORE_ROLES.length}`);
+}
+
+// ==================== END SERVER SETUP ====================
+
 // Discord bot ready event
 client.once('ready', async () => {
     console.log(`✓ Discord Bot logged in as ${client.user.tag}`);
     console.log(`✓ Bot is in ${client.guilds.cache.size} server(s)`);
+    
+    // Setup gender and vore roles in all guilds
+    for (const guild of client.guilds.cache.values()) {
+        await setupSelfAssignRoles(guild);
+    }
     
     // Post verification message to channel (if configured)
     if (VERIFY_CHANNEL_ID) {
@@ -1051,6 +1528,9 @@ client.once('ready', async () => {
     
     // Post manual verification instructions
     await postVerificationInstructions();
+    
+    // Post ping roles message
+    await postPingRolesMessage();
     
     // Start auto-accept polling if group management is configured
     if (ROBLOX_GROUP_ID && ROBLOX_COOKIE) {
@@ -1228,6 +1708,13 @@ async function autoAcceptVerifiedGroupRequests() {
     }
 }
 
+// Welcome channel ID for public welcome messages
+const WELCOME_CHANNEL_ID = '1467030660836491315';
+
+// Moderation data storage
+const warnings = new Map(); // Maps `${guildId}-${odId}` to array of warnings
+const modLogs = []; // Array of moderation actions
+
 // Auto-give role when someone joins the server
 client.on('guildMemberAdd', async (member) => {
     console.log(`New member joined: ${member.user.tag}`);
@@ -1241,16 +1728,53 @@ client.on('guildMemberAdd', async (member) => {
         }
     }
     
+    // Send welcome message to welcome channel
+    if (WELCOME_CHANNEL_ID) {
+        try {
+            const welcomeChannel = await member.guild.channels.fetch(WELCOME_CHANNEL_ID);
+            if (welcomeChannel) {
+                const memberCount = member.guild.memberCount;
+                const welcomeMessages = [
+                    `🌲 **${member.user.username}** just wandered into the forest!`,
+                    `🌿 Welcome to the park, **${member.user.username}**!`,
+                    `🦊 **${member.user.username}** has entered the forest!`,
+                    `🌳 A wild **${member.user.username}** appeared!`,
+                    `🍃 **${member.user.username}** found their way to the hangout!`
+                ];
+                const randomMessage = welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)];
+                
+                const welcomeEmbed = new EmbedBuilder()
+                    .setColor(0x2D5A27)
+                    .setTitle('🌲 Welcome to Forest Park Hangout!')
+                    .setDescription(randomMessage)
+                    .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
+                    .addFields(
+                        { name: '👤 New Member', value: `${member.user}`, inline: true },
+                        { name: '🔢 Member #', value: `${memberCount}`, inline: true },
+                        { name: '📅 Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true }
+                    )
+                    .setFooter({ text: `Please read the rules and verify to access the server!` })
+                    .setTimestamp();
+                
+                await welcomeChannel.send({ embeds: [welcomeEmbed] });
+                console.log(`✓ Sent welcome message for ${member.user.tag}`);
+            }
+        } catch (err) {
+            console.error(`Failed to send welcome message: ${err.message}`);
+        }
+    }
+    
     // Send DM with verification instructions
     try {
         const welcomeEmbed = new EmbedBuilder()
-            .setTitle('🌲 Welcome to Forest Park Hangout - Manual Verification Required')
-            .setDescription('To keep our community safe and friendly, all visitors must complete verification before accessing the full server.\n\n**Please answer all the following questions honestly and completely.**')
+            .setTitle('🔞 Welcome to Forest Park Hangout - 18+ Verification Required')
+            .setDescription('**This is an 18+ community.** To keep our community safe and friendly, all visitors must complete age verification before accessing the full server.\n\n**Please answer all the following questions honestly and completely.**')
             .setColor(0x00d4ff)
             .addFields(
-                { name: '📋 How to Verify', value: `Please go to <#${HOW_TO_VERIFY_CHANNEL_ID}> and click the **"Start Verification"** button to begin answering the verification questions.` },
+                { name: '📋 How to Verify', value: `Please go to <#${HOW_TO_VERIFY_CHANNEL_ID}> and click the **"Start 18+ Verification"** button to begin answering the verification questions.` },
+                { name: '👥 Invited by a Friend?', value: 'If you were invited by a friend, please let us know who invited you during the verification process!' },
                 { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
-                { name: '⚠️ Note', value: 'If your answers don\'t match or you appear underage, your verification will be denied.' }
+                { name: '⚠️ Note', value: 'If your answers don\'t match or you appear to be under 18, your verification will be denied.' }
             )
             .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' })
             .setTimestamp();
@@ -1262,11 +1786,38 @@ client.on('guildMemberAdd', async (member) => {
     }
 });
 
+// Goodbye message when someone leaves
+client.on('guildMemberRemove', async (member) => {
+    console.log(`Member left: ${member.user.tag}`);
+    
+    if (WELCOME_CHANNEL_ID) {
+        try {
+            const welcomeChannel = await member.guild.channels.fetch(WELCOME_CHANNEL_ID);
+            if (welcomeChannel) {
+                const goodbyeEmbed = new EmbedBuilder()
+                    .setColor(0x808080)
+                    .setDescription(`🍂 **${member.user.username}** has left the forest. Goodbye!`)
+                    .setFooter({ text: `We now have ${member.guild.memberCount} members` })
+                    .setTimestamp();
+                
+                await welcomeChannel.send({ embeds: [goodbyeEmbed] });
+            }
+        } catch (err) {
+            console.error(`Failed to send goodbye message: ${err.message}`);
+        }
+    }
+});
+
 // Track processed messages to prevent duplicates
 const processedMessages = new Set();
 
-// Staff role ID for group management commands
-const STAFF_ROLE_ID = '1386816989137211575';
+// Staff role ID for group management commands (run !setupserver to create)
+const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID || null;
+
+// Shutdown mode configuration
+const SHUTDOWN_CHANNEL_ID = '1466993014164422677'; // Channel users can see during shutdown
+let serverShutdownMode = false;
+const savedRoles = new Map(); // Maps user ID to their saved roles
 
 // Handle messages (DMs for verification + server commands for staff)
 client.on('messageCreate', async (message) => {
@@ -1278,8 +1829,687 @@ client.on('messageCreate', async (message) => {
         console.log(`Message in server: "${message.content}" from ${message.author.tag}`);
     }
     
+    // ============ SERVER SETUP COMMAND (Owner only) ============
+    if (message.guild && message.content.toLowerCase() === '!setupserver') {
+        const member = message.member;
+        // Only allow server owner
+        if (message.guild.ownerId !== message.author.id) {
+            return message.reply('❌ Only the server owner can use this command.');
+        }
+        
+        const statusMsg = await message.reply('🚀 **Setting up server...** This may take a minute.\n\n*Creating roles and channels...*');
+        
+        try {
+            const results = await setupServer(message.guild);
+            
+            const embed = new EmbedBuilder()
+                .setTitle('🎉 Server Setup Complete!')
+                .setColor(0x2ecc71)
+                .setDescription('All channels and roles have been created!')
+                .addFields(
+                    { name: '📋 Important IDs', value: 
+                        `**Unverified Role:** \`${results.roles['⏳ Unverified'] || 'N/A'}\`\n` +
+                        `**Verified Role:** \`${results.roles['✅ Verified'] || 'N/A'}\`\n` +
+                        `**Moderator Role:** \`${results.roles['🛡️ Moderator'] || 'N/A'}\`\n` +
+                        `**Verify Channel:** \`${results.verifyChannelId || 'N/A'}\`\n` +
+                        `**Log Channel:** \`${results.logChannelId || 'N/A'}\``
+                    },
+                    { name: '⚠️ Next Steps', value: 
+                        '1. Update the role/channel IDs in your code\n' +
+                        '2. Set environment variables on Render\n' +
+                        '3. Restart the bot\n' +
+                        '4. Run `!postverify` in the verify channel'
+                    }
+                )
+                .setTimestamp();
+            
+            await statusMsg.edit({ content: null, embeds: [embed] });
+        } catch (error) {
+            console.error('Setup error:', error);
+            await statusMsg.edit(`❌ Setup failed: ${error.message}`);
+        }
+        return;
+    }
+    
     // Handle server commands (not DMs)
     if (message.guild) {
+        const args = message.content.slice(1).trim().split(/ +/);
+        const command = args.shift()?.toLowerCase();
+        
+        // Check if user is staff/mod
+        const isStaff = message.member?.permissions.has('ModerateMembers') || 
+                        message.member?.permissions.has('KickMembers') ||
+                        message.member?.permissions.has('BanMembers') ||
+                        (STAFF_ROLE_ID && message.member?.roles.cache.has(STAFF_ROLE_ID));
+        const isAdmin = message.member?.permissions.has('Administrator') || 
+                        message.guild.ownerId === message.author.id;
+        
+        // ============ HELP COMMAND ============
+        if (message.content.toLowerCase() === '!help' || message.content.toLowerCase() === '!commands') {
+            const helpEmbed = new EmbedBuilder()
+                .setTitle('🤖 Bot Commands')
+                .setColor(0x00d4ff)
+                .addFields(
+                    { name: '👥 Everyone', value: 
+                        '`!help` - Show this help menu\n' +
+                        '`!serverinfo` - Show server information\n' +
+                        '`!userinfo [@user]` - Show user information\n' +
+                        '`!avatar [@user]` - Show user avatar'
+                    },
+                    { name: '🛡️ Staff Only', value: 
+                        '`!warn @user [reason]` - Warn a user\n' +
+                        '`!warnings @user` - Check user warnings\n' +
+                        '`!clearwarnings @user` - Clear user warnings\n' +
+                        '`!mute @user [duration] [reason]` - Timeout user\n' +
+                        '`!unmute @user` - Remove timeout\n' +
+                        '`!kick @user [reason]` - Kick a user\n' +
+                        '`!ban @user [reason]` - Ban a user\n' +
+                        '`!unban [userID]` - Unban a user\n' +
+                        '`!purge [amount]` - Delete messages (1-100)'
+                    },
+                    { name: '👑 Admin Only', value: 
+                        '`!setupserver` - Setup server channels/roles\n' +
+                        '`!pingroles` - Post/update ping roles message\n' +
+                        '`!shutdown` - Emergency lockdown\n' +
+                        '`!restore` - Restore from lockdown'
+                    }
+                )
+                .setFooter({ text: 'Forest Park Hangout • Moderation Bot' })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [helpEmbed] });
+        }
+        
+        // ============ SERVER INFO ============
+        if (message.content.toLowerCase() === '!serverinfo') {
+            const guild = message.guild;
+            const embed = new EmbedBuilder()
+                .setTitle(`🌲 ${guild.name}`)
+                .setThumbnail(guild.iconURL({ dynamic: true, size: 256 }))
+                .setColor(0x2D5A27)
+                .addFields(
+                    { name: '👑 Owner', value: `<@${guild.ownerId}>`, inline: true },
+                    { name: '👥 Members', value: `${guild.memberCount}`, inline: true },
+                    { name: '📅 Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:D>`, inline: true },
+                    { name: '🔢 Channels', value: `${guild.channels.cache.size}`, inline: true },
+                    { name: '🎭 Roles', value: `${guild.roles.cache.size}`, inline: true },
+                    { name: '😀 Emojis', value: `${guild.emojis.cache.size}`, inline: true },
+                    { name: '🆔 Server ID', value: `\`${guild.id}\``, inline: false }
+                )
+                .setFooter({ text: `Requested by ${message.author.username}` })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [embed] });
+        }
+        
+        // ============ USER INFO ============
+        if (message.content.toLowerCase().startsWith('!userinfo')) {
+            const target = message.mentions.members.first() || message.member;
+            const embed = new EmbedBuilder()
+                .setTitle(`👤 ${target.user.username}`)
+                .setThumbnail(target.user.displayAvatarURL({ dynamic: true, size: 256 }))
+                .setColor(target.displayHexColor || 0x00d4ff)
+                .addFields(
+                    { name: '🏷️ Tag', value: `${target.user.tag}`, inline: true },
+                    { name: '🆔 ID', value: `\`${target.id}\``, inline: true },
+                    { name: '🤖 Bot', value: target.user.bot ? 'Yes' : 'No', inline: true },
+                    { name: '📅 Account Created', value: `<t:${Math.floor(target.user.createdTimestamp / 1000)}:R>`, inline: true },
+                    { name: '📥 Joined Server', value: `<t:${Math.floor(target.joinedTimestamp / 1000)}:R>`, inline: true },
+                    { name: '🎭 Roles', value: target.roles.cache.filter(r => r.id !== message.guild.id).map(r => r).join(', ') || 'None', inline: false }
+                )
+                .setFooter({ text: `Requested by ${message.author.username}` })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [embed] });
+        }
+        
+        // ============ AVATAR ============
+        if (message.content.toLowerCase().startsWith('!avatar')) {
+            const target = message.mentions.users.first() || message.author;
+            const embed = new EmbedBuilder()
+                .setTitle(`🖼️ ${target.username}'s Avatar`)
+                .setImage(target.displayAvatarURL({ dynamic: true, size: 512 }))
+                .setColor(0x00d4ff)
+                .setFooter({ text: `Requested by ${message.author.username}` })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [embed] });
+        }
+        
+        // ============ WARN COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!warn ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user to warn.');
+            
+            const reason = args.slice(1).join(' ') || 'No reason provided';
+            const warningKey = `${message.guild.id}-${target.id}`;
+            
+            if (!warnings.has(warningKey)) warnings.set(warningKey, []);
+            const userWarnings = warnings.get(warningKey);
+            userWarnings.push({
+                reason,
+                moderator: message.author.id,
+                timestamp: Date.now()
+            });
+            
+            const warnEmbed = new EmbedBuilder()
+                .setTitle('⚠️ User Warned')
+                .setColor(0xFFCC00)
+                .addFields(
+                    { name: '👤 User', value: `${target.user.tag}`, inline: true },
+                    { name: '🛡️ Moderator', value: `${message.author.tag}`, inline: true },
+                    { name: '📝 Reason', value: reason, inline: false },
+                    { name: '⚠️ Total Warnings', value: `${userWarnings.length}`, inline: true }
+                )
+                .setTimestamp();
+            
+            await message.reply({ embeds: [warnEmbed] });
+            
+            // DM the user
+            try {
+                await target.send({
+                    embeds: [new EmbedBuilder()
+                        .setTitle('⚠️ You have been warned')
+                        .setColor(0xFFCC00)
+                        .setDescription(`You received a warning in **${message.guild.name}**`)
+                        .addFields(
+                            { name: '📝 Reason', value: reason },
+                            { name: '⚠️ Total Warnings', value: `${userWarnings.length}` }
+                        )
+                        .setTimestamp()
+                    ]
+                });
+            } catch (e) { /* Can't DM user */ }
+            
+            // Auto-action based on warning count
+            if (userWarnings.length >= 5) {
+                await target.ban({ reason: 'Reached 5 warnings - Auto-ban' });
+                message.channel.send(`🔨 **${target.user.tag}** has been auto-banned for reaching 5 warnings.`);
+            } else if (userWarnings.length >= 3) {
+                await target.timeout(24 * 60 * 60 * 1000, 'Reached 3 warnings - 24h timeout');
+                message.channel.send(`🔇 **${target.user.tag}** has been auto-muted for 24 hours (3 warnings).`);
+            }
+            return;
+        }
+        
+        // ============ WARNINGS CHECK (Staff) ============
+        if (message.content.toLowerCase().startsWith('!warnings ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user.');
+            
+            const warningKey = `${message.guild.id}-${target.id}`;
+            const userWarnings = warnings.get(warningKey) || [];
+            
+            if (userWarnings.length === 0) {
+                return message.reply(`✅ **${target.user.tag}** has no warnings.`);
+            }
+            
+            const warningList = userWarnings.map((w, i) => 
+                `**${i + 1}.** ${w.reason} - <t:${Math.floor(w.timestamp / 1000)}:R>`
+            ).join('\n');
+            
+            const embed = new EmbedBuilder()
+                .setTitle(`⚠️ Warnings for ${target.user.tag}`)
+                .setColor(0xFFCC00)
+                .setDescription(warningList)
+                .setFooter({ text: `Total: ${userWarnings.length} warning(s)` })
+                .setTimestamp();
+            
+            return message.reply({ embeds: [embed] });
+        }
+        
+        // ============ CLEAR WARNINGS (Staff) ============
+        if (message.content.toLowerCase().startsWith('!clearwarnings ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user.');
+            
+            const warningKey = `${message.guild.id}-${target.id}`;
+            warnings.delete(warningKey);
+            
+            return message.reply(`✅ Cleared all warnings for **${target.user.tag}**.`);
+        }
+        
+        // ============ MUTE/TIMEOUT COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!mute ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user to mute.');
+            if (target.id === message.author.id) return message.reply('❌ You cannot mute yourself.');
+            if (target.permissions.has('Administrator')) return message.reply('❌ Cannot mute administrators.');
+            
+            // Parse duration (default 1 hour)
+            let duration = 60 * 60 * 1000; // 1 hour default
+            let durationText = '1 hour';
+            const durationArg = args[1];
+            
+            if (durationArg) {
+                const match = durationArg.match(/^(\d+)(m|h|d)$/i);
+                if (match) {
+                    const num = parseInt(match[1]);
+                    const unit = match[2].toLowerCase();
+                    if (unit === 'm') { duration = num * 60 * 1000; durationText = `${num} minute(s)`; }
+                    if (unit === 'h') { duration = num * 60 * 60 * 1000; durationText = `${num} hour(s)`; }
+                    if (unit === 'd') { duration = num * 24 * 60 * 60 * 1000; durationText = `${num} day(s)`; }
+                }
+            }
+            
+            const reason = args.slice(2).join(' ') || 'No reason provided';
+            
+            try {
+                await target.timeout(duration, reason);
+                
+                const embed = new EmbedBuilder()
+                    .setTitle('🔇 User Muted')
+                    .setColor(0x808080)
+                    .addFields(
+                        { name: '👤 User', value: `${target.user.tag}`, inline: true },
+                        { name: '🛡️ Moderator', value: `${message.author.tag}`, inline: true },
+                        { name: '⏱️ Duration', value: durationText, inline: true },
+                        { name: '📝 Reason', value: reason, inline: false }
+                    )
+                    .setTimestamp();
+                
+                await message.reply({ embeds: [embed] });
+                
+                try {
+                    await target.send({
+                        embeds: [new EmbedBuilder()
+                            .setTitle('🔇 You have been muted')
+                            .setColor(0x808080)
+                            .setDescription(`You have been muted in **${message.guild.name}**`)
+                            .addFields(
+                                { name: '⏱️ Duration', value: durationText },
+                                { name: '📝 Reason', value: reason }
+                            )
+                            .setTimestamp()
+                        ]
+                    });
+                } catch (e) { /* Can't DM user */ }
+            } catch (err) {
+                message.reply(`❌ Failed to mute: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ UNMUTE COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!unmute ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user to unmute.');
+            
+            try {
+                await target.timeout(null);
+                message.reply(`✅ **${target.user.tag}** has been unmuted.`);
+            } catch (err) {
+                message.reply(`❌ Failed to unmute: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ KICK COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!kick ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user to kick.');
+            if (target.id === message.author.id) return message.reply('❌ You cannot kick yourself.');
+            if (!target.kickable) return message.reply('❌ I cannot kick this user. They may have higher permissions.');
+            
+            const reason = args.slice(1).join(' ') || 'No reason provided';
+            
+            try {
+                // DM before kick
+                try {
+                    await target.send({
+                        embeds: [new EmbedBuilder()
+                            .setTitle('👢 You have been kicked')
+                            .setColor(0xFF6B6B)
+                            .setDescription(`You have been kicked from **${message.guild.name}**`)
+                            .addFields({ name: '📝 Reason', value: reason })
+                            .setTimestamp()
+                        ]
+                    });
+                } catch (e) { /* Can't DM user */ }
+                
+                await target.kick(reason);
+                
+                const embed = new EmbedBuilder()
+                    .setTitle('👢 User Kicked')
+                    .setColor(0xFF6B6B)
+                    .addFields(
+                        { name: '👤 User', value: `${target.user.tag}`, inline: true },
+                        { name: '🛡️ Moderator', value: `${message.author.tag}`, inline: true },
+                        { name: '📝 Reason', value: reason, inline: false }
+                    )
+                    .setTimestamp();
+                
+                await message.reply({ embeds: [embed] });
+            } catch (err) {
+                message.reply(`❌ Failed to kick: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ BAN COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!ban ') && isStaff) {
+            const target = message.mentions.members.first();
+            if (!target) return message.reply('❌ Please mention a user to ban.');
+            if (target.id === message.author.id) return message.reply('❌ You cannot ban yourself.');
+            if (!target.bannable) return message.reply('❌ I cannot ban this user. They may have higher permissions.');
+            
+            const reason = args.slice(1).join(' ') || 'No reason provided';
+            
+            try {
+                // DM before ban
+                try {
+                    await target.send({
+                        embeds: [new EmbedBuilder()
+                            .setTitle('🔨 You have been banned')
+                            .setColor(0xFF0000)
+                            .setDescription(`You have been banned from **${message.guild.name}**`)
+                            .addFields({ name: '📝 Reason', value: reason })
+                            .setTimestamp()
+                        ]
+                    });
+                } catch (e) { /* Can't DM user */ }
+                
+                await target.ban({ reason, deleteMessageSeconds: 86400 }); // Delete 24h of messages
+                
+                const embed = new EmbedBuilder()
+                    .setTitle('🔨 User Banned')
+                    .setColor(0xFF0000)
+                    .addFields(
+                        { name: '👤 User', value: `${target.user.tag}`, inline: true },
+                        { name: '🛡️ Moderator', value: `${message.author.tag}`, inline: true },
+                        { name: '📝 Reason', value: reason, inline: false }
+                    )
+                    .setTimestamp();
+                
+                await message.reply({ embeds: [embed] });
+            } catch (err) {
+                message.reply(`❌ Failed to ban: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ UNBAN COMMAND (Staff) ============
+        if (message.content.toLowerCase().startsWith('!unban ') && isStaff) {
+            const userId = args[0];
+            if (!userId) return message.reply('❌ Please provide a user ID to unban.');
+            
+            try {
+                await message.guild.members.unban(userId);
+                message.reply(`✅ User \`${userId}\` has been unbanned.`);
+            } catch (err) {
+                message.reply(`❌ Failed to unban: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ PURGE/CLEAR COMMAND (Staff) ============
+        if ((message.content.toLowerCase().startsWith('!purge ') || message.content.toLowerCase().startsWith('!clear ')) && isStaff) {
+            const amount = parseInt(args[0]);
+            if (isNaN(amount) || amount < 1 || amount > 100) {
+                return message.reply('❌ Please provide a number between 1 and 100.');
+            }
+            
+            try {
+                const deleted = await message.channel.bulkDelete(amount + 1, true); // +1 to include command
+                const confirmMsg = await message.channel.send(`🗑️ Deleted **${deleted.size - 1}** messages.`);
+                setTimeout(() => confirmMsg.delete().catch(() => {}), 3000);
+            } catch (err) {
+                message.reply(`❌ Failed to delete messages: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ PING ROLES COMMAND (Admin only) ============
+        if (message.content.toLowerCase() === '!pingroles') {
+            const member = message.member;
+            // Only allow server owner or admins
+            if (!member || (!member.permissions.has('Administrator') && message.guild.ownerId !== message.author.id)) {
+                return message.reply('❌ Only administrators can use this command.');
+            }
+            
+            await message.reply('🔄 Setting up roles and posting messages...');
+            
+            try {
+                // First, create/find the gender and vore roles
+                await setupSelfAssignRoles(message.guild);
+                
+                // Then post the role selection messages
+                await postPingRolesMessage();
+                
+                const summary = `✅ Roles setup complete!\n• Ping Roles: ${PING_ROLES.length}\n• Gender Roles: ${GENDER_ROLES.length}\n• Vore Roles: ${VORE_ROLES.length}\n\nMessages posted to <#${PING_ROLES_CHANNEL_ID}>`;
+                await message.channel.send(summary);
+            } catch (err) {
+                await message.channel.send(`❌ Failed: ${err.message}`);
+            }
+            return;
+        }
+        
+        // ============ SHUTDOWN COMMAND (Owner/Admin only) ============
+        if (message.content.toLowerCase() === '!shutdown') {
+            const member = message.member;
+            // Only allow server owner or admins
+            if (!member || (!member.permissions.has('Administrator') && message.guild.ownerId !== message.author.id)) {
+                return message.reply('❌ Only administrators can use this command.');
+            }
+            
+            if (serverShutdownMode) {
+                return message.reply('⚠️ Server is already in shutdown mode. Use `!restore` to restore roles.');
+            }
+            
+            await message.reply('🔄 **INITIATING SERVER SHUTDOWN MODE...**\nThis will remove all roles and restrict access. Please wait...');
+            
+            try {
+                const guild = message.guild;
+                
+                // Create or find shutdown role
+                let shutdownRole = guild.roles.cache.find(r => r.name === 'Server Shutdown');
+                if (!shutdownRole) {
+                    shutdownRole = await guild.roles.create({
+                        name: 'Server Shutdown',
+                        color: 0x808080, // Gray
+                        reason: 'Server shutdown mode',
+                        permissions: [] // No permissions
+                    });
+                    console.log(`✓ Created "Server Shutdown" role: ${shutdownRole.id}`);
+                }
+                
+                // Set channel permissions - only allow viewing the shutdown channel
+                const shutdownChannel = guild.channels.cache.get(SHUTDOWN_CHANNEL_ID);
+                if (shutdownChannel) {
+                    await shutdownChannel.permissionOverwrites.edit(shutdownRole, {
+                        ViewChannel: true,
+                        SendMessages: false,
+                        ReadMessageHistory: true
+                    });
+                    console.log(`✓ Set permissions for shutdown channel`);
+                }
+                
+                // Deny the shutdown role from viewing all other channels
+                for (const [channelId, channel] of guild.channels.cache) {
+                    if (channelId !== SHUTDOWN_CHANNEL_ID && channel.permissionOverwrites) {
+                        try {
+                            await channel.permissionOverwrites.edit(shutdownRole, {
+                                ViewChannel: false
+                            });
+                        } catch (e) {
+                            // Skip channels we can't edit
+                        }
+                    }
+                }
+                
+                // Process all members
+                const members = await guild.members.fetch();
+                let processed = 0;
+                let errors = 0;
+                
+                for (const [memberId, guildMember] of members) {
+                    // Skip bots and the person running the command
+                    if (guildMember.user.bot) continue;
+                    if (memberId === message.author.id) continue;
+                    
+                    try {
+                        // Save their current roles (excluding @everyone and managed roles)
+                        const memberRoles = guildMember.roles.cache
+                            .filter(r => r.id !== guild.id && !r.managed)
+                            .map(r => r.id);
+                        savedRoles.set(memberId, memberRoles);
+                        
+                        // Remove all their roles and add shutdown role
+                        await guildMember.roles.set([shutdownRole.id]);
+                        
+                        // DM the user with the new server invite
+                        try {
+                            const dmEmbed = new EmbedBuilder()
+                                .setTitle('🔒 Server Temporarily Closed')
+                                .setDescription('**Forest Park Hangout** is currently undergoing maintenance and has been temporarily shut down.\n\nIn the meantime, please join our backup server to stay connected with the community!')
+                                .addFields(
+                                    { name: '🔗 Join Our Backup Server', value: 'https://discord.gg/sghBZx7gr' },
+                                    { name: '📢 What\'s Happening?', value: 'We\'re making some changes to improve the server. You\'ll be notified when we\'re back!' }
+                                )
+                                .setColor(0xFF6B6B)
+                                .setFooter({ text: 'Thank you for your patience! 💚' })
+                                .setTimestamp();
+                            await guildMember.send({ embeds: [dmEmbed] });
+                            console.log(`✓ Sent shutdown DM to ${guildMember.user.tag}`);
+                        } catch (dmError) {
+                            console.log(`Could not DM ${guildMember.user.tag}: ${dmError.message}`);
+                        }
+                        
+                        processed++;
+                        
+                        if (processed % 10 === 0) {
+                            console.log(`Processed ${processed} members...`);
+                        }
+                    } catch (e) {
+                        console.error(`Failed to process ${guildMember.user.tag}: ${e.message}`);
+                        errors++;
+                    }
+                }
+                
+                serverShutdownMode = true;
+                
+                // Send message to shutdown channel
+                if (shutdownChannel) {
+                    const shutdownEmbed = new EmbedBuilder()
+                        .setTitle('🔒 Server Temporarily Closed')
+                        .setDescription('The server is currently undergoing maintenance or has been temporarily shut down.\n\nPlease wait for further announcements.')
+                        .setColor(0xFF0000)
+                        .setTimestamp();
+                    await shutdownChannel.send({ embeds: [shutdownEmbed] });
+                }
+                
+                await message.channel.send(`✅ **SERVER SHUTDOWN COMPLETE**\n• Processed: ${processed} members\n• Errors: ${errors}\n• Shutdown role created/applied\n• Users can only see <#${SHUTDOWN_CHANNEL_ID}>\n\nUse \`!restore\` to restore all roles.`);
+                
+            } catch (error) {
+                console.error('Shutdown error:', error);
+                await message.reply(`❌ Error during shutdown: ${error.message}`);
+            }
+            return;
+        }
+        
+        // ============ MASS DM COMMAND (Owner/Admin only) ============
+        if (message.content.toLowerCase() === '!massdm' || message.content.toLowerCase() === '!dmall') {
+            const member = message.member;
+            if (!member || (!member.permissions.has('Administrator') && message.guild.ownerId !== message.author.id)) {
+                return message.reply('❌ Only administrators can use this command.');
+            }
+            
+            await message.reply('🔄 **SENDING DMs TO ALL MEMBERS...**\nThis may take a while. Please wait...');
+            
+            try {
+                const guild = message.guild;
+                const members = await guild.members.fetch();
+                let sent = 0;
+                let failed = 0;
+                
+                for (const [memberId, guildMember] of members) {
+                    // Skip bots
+                    if (guildMember.user.bot) continue;
+                    
+                    try {
+                        const dmEmbed = new EmbedBuilder()
+                            .setTitle('🔒 Server Temporarily Closed')
+                            .setDescription('**Forest Park Hangout** is currently undergoing maintenance and has been temporarily shut down.\n\nIn the meantime, please join our backup server to stay connected with the community!')
+                            .addFields(
+                                { name: '🔗 Join Our Backup Server', value: 'https://discord.gg/sghBZx7gr' },
+                                { name: '📢 What\'s Happening?', value: 'We\'re making some changes to improve the server. You\'ll be notified when we\'re back!' }
+                            )
+                            .setColor(0xFF6B6B)
+                            .setFooter({ text: 'Thank you for your patience! 💚' })
+                            .setTimestamp();
+                        await guildMember.send({ embeds: [dmEmbed] });
+                        sent++;
+                        console.log(`✓ Sent DM to ${guildMember.user.tag} (${sent} sent)`);
+                        
+                        // Small delay to avoid rate limits
+                        if (sent % 5 === 0) {
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                        }
+                    } catch (dmError) {
+                        failed++;
+                        console.log(`✗ Could not DM ${guildMember.user.tag}: ${dmError.message}`);
+                    }
+                }
+                
+                await message.channel.send(`✅ **MASS DM COMPLETE**\n• Sent: ${sent} DMs\n• Failed: ${failed} (DMs disabled or blocked)`);
+                
+            } catch (error) {
+                console.error('Mass DM error:', error);
+                await message.reply(`❌ Error: ${error.message}`);
+            }
+            return;
+        }
+        
+        // ============ RESTORE COMMAND (Owner/Admin only) ============
+        if (message.content.toLowerCase() === '!restore') {
+            const member = message.member;
+            if (!member || (!member.permissions.has('Administrator') && message.guild.ownerId !== message.author.id)) {
+                return message.reply('❌ Only administrators can use this command.');
+            }
+            
+            if (!serverShutdownMode) {
+                return message.reply('⚠️ Server is not in shutdown mode.');
+            }
+            
+            await message.reply('🔄 **RESTORING ROLES...**\nPlease wait...');
+            
+            try {
+                const guild = message.guild;
+                let restored = 0;
+                let errors = 0;
+                
+                for (const [memberId, roleIds] of savedRoles) {
+                    try {
+                        const guildMember = await guild.members.fetch(memberId).catch(() => null);
+                        if (guildMember && roleIds.length > 0) {
+                            await guildMember.roles.set(roleIds);
+                            restored++;
+                        }
+                    } catch (e) {
+                        console.error(`Failed to restore roles for ${memberId}: ${e.message}`);
+                        errors++;
+                    }
+                }
+                
+                // Clear saved roles
+                savedRoles.clear();
+                serverShutdownMode = false;
+                
+                // Optionally delete the shutdown role
+                const shutdownRole = guild.roles.cache.find(r => r.name === 'Server Shutdown');
+                if (shutdownRole) {
+                    await shutdownRole.delete('Server restored').catch(() => {});
+                }
+                
+                await message.channel.send(`✅ **ROLES RESTORED**\n• Restored: ${restored} members\n• Errors: ${errors}\n• Server is back to normal!`);
+                
+            } catch (error) {
+                console.error('Restore error:', error);
+                await message.reply(`❌ Error during restore: ${error.message}`);
+            }
+            return;
+        }
+        
         // Check for !grouprequests command (staff only)
         if (message.content.toLowerCase() === '!grouprequests') {
             console.log(`!grouprequests command from ${message.author.tag}`);
@@ -1758,8 +2988,8 @@ async function postVerificationInstructions() {
         
         // Build the embed and button
         const embed = new EmbedBuilder()
-            .setTitle('🌲 Welcome to Forest Park Hangout – Manual Verification Required')
-            .setDescription('To keep our community safe and friendly, all visitors must complete verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
+            .setTitle('🔞 Welcome to Forest Park Hangout – 18+ Verification Required')
+            .setDescription('**This is an 18+ community.** To keep our community safe and friendly, all visitors must complete age verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
             .setColor(0x87CEEB)
             .addFields(
                 { name: '🔐 Part 1 - Identity & Age Verification:', value: 
@@ -1767,24 +2997,26 @@ async function postVerificationInstructions() {
                     '2. How old will you be on your next birthday?\n' +
                     '3. List any vore-related servers you are currently in\n' +
                     '4. Why did you decide to join Forest Park Hangout?\n' +
-                    '5. Quote 3 rules & explain them in your own words'
+                    '5. Quote 3 rules & explain them in your own words\n' +
+                    '6. **Were you invited by a friend? If yes, who?**'
                 },
                 { name: '🔐 Part 2 - About You:', value: 
-                    '6. How did you find this server?\n' +
-                    '7. What timezone are you in?\n' +
-                    '8. Have you been banned from any Discord servers?\n' +
-                    '9. Do you have any alt Discord accounts?\n' +
-                    '10. (Optional) What does vore mean to you?'
+                    '7. How did you find this server?\n' +
+                    '8. What timezone are you in?\n' +
+                    '9. Have you been banned from any Discord servers?\n' +
+                    '10. Do you have any alt Discord accounts?\n' +
+                    '11. (Optional) What does vore mean to you?'
                 },
                 { name: '🔐 Part 3 - Roblox & Final Questions:', value: 
-                    '11. What is your Roblox username?\n' +
-                    '12. Have you played Forest Park Hangout before?\n' +
-                    '13. Are you comfortable following all server rules?\n' +
-                    '14. What experience are you hoping to have?\n' +
-                    '15. Anything else you want staff to know?'
+                    '12. What is your Roblox username?\n' +
+                    '13. Have you played Forest Park Hangout before?\n' +
+                    '14. Are you comfortable following all server rules?\n' +
+                    '15. What experience are you hoping to have?\n' +
+                    '16. Anything else you want staff to know?'
                 },
+                { name: '👥 Invited by a Friend?', value: 'If you were invited by a friend, please let us know who invited you!' },
                 { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
-                { name: '🚨 Note', value: 'If your answers don\'t match or you appear underage, your verification will be denied.\n\nIf you need help, ping <@&1386816989137211575>.' }
+                { name: '🚨 Note', value: 'If your answers don\'t match or you appear to be under 18, your verification will be denied.\n\nIf you need help, ping <@&1386816989137211575>.' }
             )
             .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' });
         
@@ -1792,7 +3024,7 @@ async function postVerificationInstructions() {
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('start_manual_verification')
-                    .setLabel('📝 Start Verification')
+                    .setLabel('📝 Start 18+ Verification')
                     .setStyle(ButtonStyle.Success)
             );
         
@@ -1815,6 +3047,164 @@ async function postVerificationInstructions() {
         }
     } catch (err) {
         console.error('Failed to post verification instructions:', err.message);
+    }
+}
+
+// Post ping roles message to the ping roles channel
+async function postPingRolesMessage() {
+    if (!PING_ROLES_CHANNEL_ID) {
+        console.log('ℹ️ Ping roles channel not configured');
+        return;
+    }
+    
+    const hasAnyRoles = PING_ROLES.length > 0 || GENDER_ROLES.length > 0 || VORE_ROLES.length > 0;
+    if (!hasAnyRoles) {
+        console.log('ℹ️ No roles configured - add role IDs to PING_ROLES, GENDER_ROLES, or VORE_ROLES arrays');
+        return;
+    }
+    
+    try {
+        const channel = await client.channels.fetch(PING_ROLES_CHANNEL_ID);
+        
+        // ========== NOTIFICATION ROLES ==========
+        if (PING_ROLES.length > 0) {
+            const roleDescriptions = PING_ROLES.map(role => 
+                `${role.emoji} **${role.label}** - ${role.description}`
+            ).join('\n');
+            
+            const embed = new EmbedBuilder()
+                .setTitle('🔔 Notification Roles')
+                .setDescription('Click the buttons below to toggle notification roles.\nClick once to **add** the role, click again to **remove** it.\n\n' + roleDescriptions)
+                .setColor(0x5865F2)
+                .setFooter({ text: 'Toggle roles anytime by clicking the buttons' });
+            
+            // Build button rows (max 5 buttons per row)
+            const rows = [];
+            for (let i = 0; i < PING_ROLES.length; i += 5) {
+                const row = new ActionRowBuilder();
+                const rolesInRow = PING_ROLES.slice(i, i + 5);
+                
+                for (const role of rolesInRow) {
+                    row.addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`ping_role_${role.id}`)
+                            .setLabel(role.label)
+                            .setEmoji(role.emoji)
+                            .setStyle(ButtonStyle.Secondary)
+                    );
+                }
+                rows.push(row);
+            }
+            
+            // Check if we already have a ping roles message
+            const messages = await channel.messages.fetch({ limit: 20 });
+            const existingMessage = messages.find(m => 
+                m.author.id === client.user.id && 
+                m.embeds.length > 0 &&
+                m.embeds[0].title?.includes('Notification Roles')
+            );
+            
+            if (existingMessage) {
+                await existingMessage.edit({ embeds: [embed], components: rows });
+                console.log('✓ Updated existing notification roles message');
+            } else {
+                await channel.send({ embeds: [embed], components: rows });
+                console.log('✓ Posted new notification roles message');
+            }
+        }
+        
+        // ========== GENDER ROLES ==========
+        if (GENDER_ROLES.length > 0) {
+            const genderDescriptions = GENDER_ROLES.map(role => 
+                `${role.emoji} **${role.label}**`
+            ).join(' • ');
+            
+            const genderEmbed = new EmbedBuilder()
+                .setTitle('⚧️ Gender Roles')
+                .setDescription('Select your gender identity.\nClick once to **add** the role, click again to **remove** it.\n\n' + genderDescriptions)
+                .setColor(0xFF69B4)
+                .setFooter({ text: 'You can select one or more roles' });
+            
+            const genderRows = [];
+            for (let i = 0; i < GENDER_ROLES.length; i += 5) {
+                const row = new ActionRowBuilder();
+                const rolesInRow = GENDER_ROLES.slice(i, i + 5);
+                
+                for (const role of rolesInRow) {
+                    row.addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`gender_role_${role.id}`)
+                            .setLabel(role.label)
+                            .setEmoji(role.emoji)
+                            .setStyle(ButtonStyle.Secondary)
+                    );
+                }
+                genderRows.push(row);
+            }
+            
+            const messages = await channel.messages.fetch({ limit: 20 });
+            const existingGenderMessage = messages.find(m => 
+                m.author.id === client.user.id && 
+                m.embeds.length > 0 &&
+                m.embeds[0].title?.includes('Gender Roles')
+            );
+            
+            if (existingGenderMessage) {
+                await existingGenderMessage.edit({ embeds: [genderEmbed], components: genderRows });
+                console.log('✓ Updated existing gender roles message');
+            } else {
+                await channel.send({ embeds: [genderEmbed], components: genderRows });
+                console.log('✓ Posted new gender roles message');
+            }
+        }
+        
+        // ========== VORE PREFERENCE ROLES ==========
+        if (VORE_ROLES.length > 0) {
+            const voreDescriptions = VORE_ROLES.map(role => 
+                `${role.emoji} **${role.label}** - ${role.description}`
+            ).join('\n');
+            
+            const voreEmbed = new EmbedBuilder()
+                .setTitle('🍽️ Vore Preference Roles')
+                .setDescription('Select your vore preference.\nClick once to **add** the role, click again to **remove** it.\n\n' + voreDescriptions)
+                .setColor(0x9B59B6)
+                .setFooter({ text: 'You can select one or more roles' });
+            
+            const voreRows = [];
+            for (let i = 0; i < VORE_ROLES.length; i += 5) {
+                const row = new ActionRowBuilder();
+                const rolesInRow = VORE_ROLES.slice(i, i + 5);
+                
+                for (const role of rolesInRow) {
+                    row.addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`vore_role_${role.id}`)
+                            .setLabel(role.label)
+                            .setEmoji(role.emoji)
+                            .setStyle(ButtonStyle.Secondary)
+                    );
+                }
+                voreRows.push(row);
+            }
+            
+            const messages = await channel.messages.fetch({ limit: 20 });
+            const existingVoreMessage = messages.find(m => 
+                m.author.id === client.user.id && 
+                m.embeds.length > 0 &&
+                m.embeds[0].title?.includes('Vore Preference Roles')
+            );
+            
+            if (existingVoreMessage) {
+                await existingVoreMessage.edit({ embeds: [voreEmbed], components: voreRows });
+                console.log('✓ Updated existing vore preference roles message');
+            } else {
+                await channel.send({ embeds: [voreEmbed], components: voreRows });
+                console.log('✓ Posted new vore preference roles message');
+            }
+        }
+        
+    } catch (err) {
+        console.error('Failed to post roles messages:', err.message);
     }
 }
 
@@ -2283,6 +3673,163 @@ client.on('interactionCreate', async (interaction) => {
     const customId = interaction.customId;
     console.log(`Button click detected: customId="${customId}"`);
     
+    // Handle ping role toggle buttons
+    if (customId.startsWith('ping_role_')) {
+        const roleId = customId.replace('ping_role_', '');
+        
+        // Make sure we're in a guild
+        if (!interaction.guild) {
+            await interaction.reply({
+                content: '❌ This can only be used in a server.',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        try {
+            const member = interaction.member;
+            const role = interaction.guild.roles.cache.get(roleId);
+            
+            if (!role) {
+                await interaction.reply({
+                    content: '❌ This role no longer exists. Please contact a staff member.',
+                    ephemeral: true
+                });
+                return;
+            }
+            
+            // Check if member has the role
+            const hasRole = member.roles.cache.has(roleId);
+            
+            if (hasRole) {
+                // Remove the role
+                await member.roles.remove(roleId);
+                await interaction.reply({
+                    content: `✅ Removed the **${role.name}** notification role. You will no longer be pinged for these notifications.`,
+                    ephemeral: true
+                });
+                console.log(`✓ Removed ping role ${role.name} from ${interaction.user.tag}`);
+            } else {
+                // Add the role
+                await member.roles.add(roleId);
+                await interaction.reply({
+                    content: `✅ Added the **${role.name}** notification role! You will now be pinged for these notifications.`,
+                    ephemeral: true
+                });
+                console.log(`✓ Added ping role ${role.name} to ${interaction.user.tag}`);
+            }
+        } catch (err) {
+            console.error('Error toggling ping role:', err.message);
+            await interaction.reply({
+                content: '❌ Failed to toggle the role. The bot may not have permission to manage roles.',
+                ephemeral: true
+            });
+        }
+        return;
+    }
+    
+    // Handle gender role toggle buttons
+    if (customId.startsWith('gender_role_')) {
+        const roleId = customId.replace('gender_role_', '');
+        
+        if (!interaction.guild) {
+            await interaction.reply({
+                content: '❌ This can only be used in a server.',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        try {
+            const member = interaction.member;
+            const role = interaction.guild.roles.cache.get(roleId);
+            
+            if (!role) {
+                await interaction.reply({
+                    content: '❌ This role no longer exists. Please contact a staff member.',
+                    ephemeral: true
+                });
+                return;
+            }
+            
+            const hasRole = member.roles.cache.has(roleId);
+            
+            if (hasRole) {
+                await member.roles.remove(roleId);
+                await interaction.reply({
+                    content: `✅ Removed the **${role.name}** role.`,
+                    ephemeral: true
+                });
+                console.log(`✓ Removed gender role ${role.name} from ${interaction.user.tag}`);
+            } else {
+                await member.roles.add(roleId);
+                await interaction.reply({
+                    content: `✅ Added the **${role.name}** role!`,
+                    ephemeral: true
+                });
+                console.log(`✓ Added gender role ${role.name} to ${interaction.user.tag}`);
+            }
+        } catch (err) {
+            console.error('Error toggling gender role:', err.message);
+            await interaction.reply({
+                content: '❌ Failed to toggle the role. The bot may not have permission to manage roles.',
+                ephemeral: true
+            });
+        }
+        return;
+    }
+    
+    // Handle vore preference role toggle buttons
+    if (customId.startsWith('vore_role_')) {
+        const roleId = customId.replace('vore_role_', '');
+        
+        if (!interaction.guild) {
+            await interaction.reply({
+                content: '❌ This can only be used in a server.',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        try {
+            const member = interaction.member;
+            const role = interaction.guild.roles.cache.get(roleId);
+            
+            if (!role) {
+                await interaction.reply({
+                    content: '❌ This role no longer exists. Please contact a staff member.',
+                    ephemeral: true
+                });
+                return;
+            }
+            
+            const hasRole = member.roles.cache.has(roleId);
+            
+            if (hasRole) {
+                await member.roles.remove(roleId);
+                await interaction.reply({
+                    content: `✅ Removed the **${role.name}** role.`,
+                    ephemeral: true
+                });
+                console.log(`✓ Removed vore role ${role.name} from ${interaction.user.tag}`);
+            } else {
+                await member.roles.add(roleId);
+                await interaction.reply({
+                    content: `✅ Added the **${role.name}** role!`,
+                    ephemeral: true
+                });
+                console.log(`✓ Added vore role ${role.name} to ${interaction.user.tag}`);
+            }
+        } catch (err) {
+            console.error('Error toggling vore role:', err.message);
+            await interaction.reply({
+                content: '❌ Failed to toggle the role. The bot may not have permission to manage roles.',
+                ephemeral: true
+            });
+        }
+        return;
+    }
+    
     // Handle "I Added the Code" button - verify the profile
     if (customId === 'verify_code_check') {
         const pending = pendingRobloxVerifications.get(interaction.user.id);
@@ -2389,9 +3936,9 @@ client.on('interactionCreate', async (interaction) => {
         
         await interaction.editReply({ embeds: [successEmbed], components: [] });
         
-        // Log to staff channel
+        // Log to in-game verification log channel
         try {
-            const logChannel = await client.channels.fetch(process.env.DISCORD_VERIFICATION_CHANNEL_ID);
+            const logChannel = await client.channels.fetch(IN_GAME_VERIFICATION_LOG_CHANNEL_ID);
             const logEmbed = new EmbedBuilder()
                 .setTitle('✅ New Verification (Code Verified)')
                 .setColor(0x00ff00)
@@ -3288,9 +4835,9 @@ client.on('interactionCreate', async (interaction) => {
         
         console.log(`✓ User ${interaction.user.tag} verified automatically (Discord: ${verification.discordId}, Roblox: ${verification.playerName})`);
         
-        // Optionally log to staff channel (just for info, no action needed)
+        // Log to in-game verification log channel
         try {
-            const channelId = process.env.DISCORD_VERIFICATION_CHANNEL_ID;
+            const channelId = IN_GAME_VERIFICATION_LOG_CHANNEL_ID;
             if (channelId) {
                 const channel = await client.channels.fetch(channelId);
                 const embed = new EmbedBuilder()
