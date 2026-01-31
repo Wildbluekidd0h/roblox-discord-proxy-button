@@ -1310,7 +1310,7 @@ async function setupServer(guild) {
             const hasVerify = existingMessages.some(m => 
                 m.author.id === client.user.id && 
                 m.components.length > 0 &&
-                m.components[0]?.components[0]?.customId === 'start_dm_verification'
+                m.components[0]?.components[0]?.customId === 'start_manual_verification'
             );
             
             if (hasVerify) {
@@ -1352,7 +1352,7 @@ async function setupServer(guild) {
                 const verifyButton = new ActionRowBuilder()
                     .addComponents(
                         new ButtonBuilder()
-                            .setCustomId('start_dm_verification')
+                            .setCustomId('start_manual_verification')
                             .setLabel('📝 Start 18+ Verification')
                             .setStyle(ButtonStyle.Success)
                     );
