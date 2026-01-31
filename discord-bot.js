@@ -3274,6 +3274,12 @@ async function postVerificationInstructions() {
 
 // Post ping roles message to the ping roles channel
 async function postPingRolesMessage() {
+    console.log('postPingRolesMessage called');
+    console.log(`PING_ROLES_CHANNEL_ID: ${PING_ROLES_CHANNEL_ID}`);
+    console.log(`PING_ROLES.length: ${PING_ROLES.length}`);
+    console.log(`GENDER_ROLES.length: ${GENDER_ROLES.length}`);
+    console.log(`VORE_ROLES.length: ${VORE_ROLES.length}`);
+    
     if (!PING_ROLES_CHANNEL_ID) {
         console.log('ℹ️ Ping roles channel not configured');
         return;
@@ -3287,9 +3293,11 @@ async function postPingRolesMessage() {
     
     try {
         const channel = await client.channels.fetch(PING_ROLES_CHANNEL_ID);
+        console.log(`Fetched channel: ${channel.name}`);
         
         // ========== NOTIFICATION ROLES ==========
         if (PING_ROLES.length > 0) {
+            console.log('Posting notification roles...');
             const roleDescriptions = PING_ROLES.map(role => 
                 `${role.emoji} **${role.label}** - ${role.description}`
             ).join('\n');
@@ -3337,6 +3345,8 @@ async function postPingRolesMessage() {
         
         // ========== GENDER ROLES ==========
         if (GENDER_ROLES.length > 0) {
+            console.log('Posting gender roles...');
+            console.log('GENDER_ROLES:', JSON.stringify(GENDER_ROLES));
             const genderDescriptions = GENDER_ROLES.map(role => 
                 `${role.emoji} **${role.label}**`
             ).join(' • ');
