@@ -1227,48 +1227,60 @@ async function setupServer(guild) {
         try {
             const rulesChannel = await guild.channels.fetch(results.rulesChannelId);
             
-            const rulesEmbed = new EmbedBuilder()
-                .setTitle('📜 Forest Park Hangout – Server Rules')
-                .setDescription('Welcome to **Forest Park Hangout**! This is an 18+ community. Please read and follow all rules to keep our space safe and welcoming for everyone.')
-                .setColor(0x87CEEB)
-                .addFields(
-                    { name: '🔞 Age Requirement', value: 
-                        '• You must be **18 years or older** to be in this server\n' +
-                        '• Lying about your age = immediate permanent ban\n' +
-                        '• No minors allowed under any circumstances'
-                    },
-                    { name: '💬 Behavior & Chat', value: 
-                        '• Treat everyone with respect\n' +
-                        '• No harassment, bullying, or discrimination\n' +
-                        '• No spam, excessive caps, or flooding\n' +
-                        '• Keep drama out of public channels\n' +
-                        '• English only in public channels'
-                    },
-                    { name: '🔒 Safety & Privacy', value: 
-                        '• Never share personal info (yours or others)\n' +
-                        '• No doxxing or threats\n' +
-                        '• No unsolicited DMs, especially NSFW\n' +
-                        '• Report issues to staff, don\'t escalate'
-                    },
-                    { name: '🎮 Roblox & Game Rules', value: 
-                        '• Verify your Roblox account to access game features\n' +
-                        '• No exploiting, hacking, or cheating\n' +
-                        '• In-game harassment = Discord punishment\n' +
-                        '• Follow the same rules in Forest Park Hangout'
-                    },
-                    { name: '⚖️ Moderation', value: 
-                        '• Staff decisions are final\n' +
-                        '• Loopholes = rule breaking\n' +
-                        '• Alt accounts to evade bans = all accounts banned\n' +
-                        '• Appeal through proper channels, not public drama'
-                    },
-                    { name: '⚠️ Consequences', value: 'Breaking rules may result in: warnings, mutes, kicks, or permanent bans depending on severity.' }
-                )
-                .setFooter({ text: 'By being here, you agree to follow all rules. • Last Updated: January 2026' })
-                .setTimestamp();
+            // Check if rules already posted
+            const existingMessages = await rulesChannel.messages.fetch({ limit: 10 });
+            const hasRules = existingMessages.some(m => 
+                m.author.id === client.user.id && 
+                m.embeds.length > 0 && 
+                m.embeds[0].title?.includes('Server Rules')
+            );
             
-            await rulesChannel.send({ embeds: [rulesEmbed] });
-            console.log('✅ Posted rules to rules channel');
+            if (hasRules) {
+                console.log('⏭️ Rules already posted, skipping');
+            } else {
+                const rulesEmbed = new EmbedBuilder()
+                    .setTitle('📜 Forest Park Hangout – Server Rules')
+                    .setDescription('Welcome to **Forest Park Hangout**! This is an 18+ community. Please read and follow all rules to keep our space safe and welcoming for everyone.')
+                    .setColor(0x87CEEB)
+                    .addFields(
+                        { name: '🔞 Age Requirement', value: 
+                            '• You must be **18 years or older** to be in this server\n' +
+                            '• Lying about your age = immediate permanent ban\n' +
+                            '• No minors allowed under any circumstances'
+                        },
+                        { name: '💬 Behavior & Chat', value: 
+                            '• Treat everyone with respect\n' +
+                            '• No harassment, bullying, or discrimination\n' +
+                            '• No spam, excessive caps, or flooding\n' +
+                            '• Keep drama out of public channels\n' +
+                            '• English only in public channels'
+                        },
+                        { name: '🔒 Safety & Privacy', value: 
+                            '• Never share personal info (yours or others)\n' +
+                            '• No doxxing or threats\n' +
+                            '• No unsolicited DMs, especially NSFW\n' +
+                            '• Report issues to staff, don\'t escalate'
+                        },
+                        { name: '🎮 Roblox & Game Rules', value: 
+                            '• Verify your Roblox account to access game features\n' +
+                            '• No exploiting, hacking, or cheating\n' +
+                            '• In-game harassment = Discord punishment\n' +
+                            '• Follow the same rules in Forest Park Hangout'
+                        },
+                        { name: '⚖️ Moderation', value: 
+                            '• Staff decisions are final\n' +
+                            '• Loopholes = rule breaking\n' +
+                            '• Alt accounts to evade bans = all accounts banned\n' +
+                            '• Appeal through proper channels, not public drama'
+                        },
+                        { name: '⚠️ Consequences', value: 'Breaking rules may result in: warnings, mutes, kicks, or permanent bans depending on severity.' }
+                    )
+                    .setFooter({ text: 'By being here, you agree to follow all rules. • Last Updated: January 2026' })
+                    .setTimestamp();
+                
+                await rulesChannel.send({ embeds: [rulesEmbed] });
+                console.log('✅ Posted rules to rules channel');
+            }
         } catch (err) {
             console.log(`❌ Failed to post rules: ${err.message}`);
         }
@@ -1279,49 +1291,61 @@ async function setupServer(guild) {
         try {
             const verifyChannel = await guild.channels.fetch(results.verifyChannelId);
             
-            const verifyEmbed = new EmbedBuilder()
-                .setTitle('🔞 Welcome to Forest Park Hangout – 18+ Verification Required')
-                .setDescription('**This is an 18+ community.** To keep our community safe and friendly, all visitors must complete age verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
-                .setColor(0x87CEEB)
-                .addFields(
-                    { name: '🔐 Part 1 - Identity & Age Verification:', value: 
-                        '1. What is your birthdate? (MM/DD/YYYY)\n' +
-                        '2. How old will you be on your next birthday?\n' +
-                        '3. List any vore-related servers you are currently in\n' +
-                        '4. Why did you decide to join Forest Park Hangout?\n' +
-                        '5. Quote 3 rules & explain them in your own words\n' +
-                        '6. **Were you invited by a friend? If yes, who?**'
-                    },
-                    { name: '🔐 Part 2 - About You:', value: 
-                        '7. How did you find this server?\n' +
-                        '8. What timezone are you in?\n' +
-                        '9. Have you been banned from any Discord servers?\n' +
-                        '10. Do you have any alt Discord accounts?\n' +
-                        '11. (Optional) What does vore mean to you?'
-                    },
-                    { name: '🔐 Part 3 - Roblox & Final Questions:', value: 
-                        '12. What is your Roblox username?\n' +
-                        '13. Have you played Forest Park Hangout before?\n' +
-                        '14. Are you comfortable following all server rules?\n' +
-                        '15. What experience are you hoping to have?\n' +
-                        '16. Anything else you want staff to know?'
-                    },
-                    { name: '👥 Invited by a Friend?', value: 'If you were invited by a friend, please let us know who invited you!' },
-                    { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
-                    { name: '🚨 Note', value: 'If your answers don\'t match or you appear to be under 18, your verification will be denied.\n\nIf you need help, contact staff.' }
-                )
-                .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' });
+            // Check if verification instructions already posted
+            const existingMessages = await verifyChannel.messages.fetch({ limit: 10 });
+            const hasVerify = existingMessages.some(m => 
+                m.author.id === client.user.id && 
+                m.components.length > 0 &&
+                m.components[0]?.components[0]?.customId === 'start_dm_verification'
+            );
             
-            const verifyButton = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('start_dm_verification')
-                        .setLabel('📝 Start 18+ Verification')
-                        .setStyle(ButtonStyle.Success)
-                );
-            
-            await verifyChannel.send({ embeds: [verifyEmbed], components: [verifyButton] });
-            console.log('✅ Posted verification instructions to verify channel');
+            if (hasVerify) {
+                console.log('⏭️ Verification instructions already posted, skipping');
+            } else {
+                const verifyEmbed = new EmbedBuilder()
+                    .setTitle('🔞 Welcome to Forest Park Hangout – 18+ Verification Required')
+                    .setDescription('**This is an 18+ community.** To keep our community safe and friendly, all visitors must complete age verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
+                    .setColor(0x87CEEB)
+                    .addFields(
+                        { name: '🔐 Part 1 - Identity & Age Verification:', value: 
+                            '1. What is your birthdate? (MM/DD/YYYY)\n' +
+                            '2. How old will you be on your next birthday?\n' +
+                            '3. List any vore-related servers you are currently in\n' +
+                            '4. Why did you decide to join Forest Park Hangout?\n' +
+                            '5. Quote 3 rules & explain them in your own words\n' +
+                            '6. **Were you invited by a friend? If yes, who?**'
+                        },
+                        { name: '🔐 Part 2 - About You:', value: 
+                            '7. How did you find this server?\n' +
+                            '8. What timezone are you in?\n' +
+                            '9. Have you been banned from any Discord servers?\n' +
+                            '10. Do you have any alt Discord accounts?\n' +
+                            '11. (Optional) What does vore mean to you?'
+                        },
+                        { name: '🔐 Part 3 - Roblox & Final Questions:', value: 
+                            '12. What is your Roblox username?\n' +
+                            '13. Have you played Forest Park Hangout before?\n' +
+                            '14. Are you comfortable following all server rules?\n' +
+                            '15. What experience are you hoping to have?\n' +
+                            '16. Anything else you want staff to know?'
+                        },
+                        { name: '👥 Invited by a Friend?', value: 'If you were invited by a friend, please let us know who invited you!' },
+                        { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
+                        { name: '🚨 Note', value: 'If your answers don\'t match or you appear to be under 18, your verification will be denied.\n\nIf you need help, contact staff.' }
+                    )
+                    .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' });
+                
+                const verifyButton = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('start_dm_verification')
+                            .setLabel('📝 Start 18+ Verification')
+                            .setStyle(ButtonStyle.Success)
+                    );
+                
+                await verifyChannel.send({ embeds: [verifyEmbed], components: [verifyButton] });
+                console.log('✅ Posted verification instructions to verify channel');
+            }
         } catch (err) {
             console.log(`❌ Failed to post verification instructions: ${err.message}`);
         }
