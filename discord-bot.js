@@ -1360,6 +1360,25 @@ client.on('messageCreate', async (message) => {
                         
                         // Remove all their roles and add shutdown role
                         await guildMember.roles.set([shutdownRole.id]);
+                        
+                        // DM the user with the new server invite
+                        try {
+                            const dmEmbed = new EmbedBuilder()
+                                .setTitle('🔒 Server Temporarily Closed')
+                                .setDescription('**Forest Park Hangout** is currently undergoing maintenance and has been temporarily shut down.\n\nIn the meantime, please join our backup server to stay connected with the community!')
+                                .addFields(
+                                    { name: '🔗 Join Our Backup Server', value: 'https://discord.gg/sghBZx7gr' },
+                                    { name: '📢 What\'s Happening?', value: 'We\'re making some changes to improve the server. You\'ll be notified when we\'re back!' }
+                                )
+                                .setColor(0xFF6B6B)
+                                .setFooter({ text: 'Thank you for your patience! 💚' })
+                                .setTimestamp();
+                            await guildMember.send({ embeds: [dmEmbed] });
+                            console.log(`✓ Sent shutdown DM to ${guildMember.user.tag}`);
+                        } catch (dmError) {
+                            console.log(`Could not DM ${guildMember.user.tag}: ${dmError.message}`);
+                        }
+                        
                         processed++;
                         
                         if (processed % 10 === 0) {
@@ -1388,6 +1407,59 @@ client.on('messageCreate', async (message) => {
             } catch (error) {
                 console.error('Shutdown error:', error);
                 await message.reply(`❌ Error during shutdown: ${error.message}`);
+            }
+            return;
+        }
+        
+        // ============ MASS DM COMMAND (Owner/Admin only) ============
+        if (message.content.toLowerCase() === '!massdm' || message.content.toLowerCase() === '!dmall') {
+            const member = message.member;
+            if (!member || (!member.permissions.has('Administrator') && message.guild.ownerId !== message.author.id)) {
+                return message.reply('❌ Only administrators can use this command.');
+            }
+            
+            await message.reply('🔄 **SENDING DMs TO ALL MEMBERS...**\nThis may take a while. Please wait...');
+            
+            try {
+                const guild = message.guild;
+                const members = await guild.members.fetch();
+                let sent = 0;
+                let failed = 0;
+                
+                for (const [memberId, guildMember] of members) {
+                    // Skip bots
+                    if (guildMember.user.bot) continue;
+                    
+                    try {
+                        const dmEmbed = new EmbedBuilder()
+                            .setTitle('🔒 Server Temporarily Closed')
+                            .setDescription('**Forest Park Hangout** is currently undergoing maintenance and has been temporarily shut down.\n\nIn the meantime, please join our backup server to stay connected with the community!')
+                            .addFields(
+                                { name: '🔗 Join Our Backup Server', value: 'https://discord.gg/sghBZx7gr' },
+                                { name: '📢 What\'s Happening?', value: 'We\'re making some changes to improve the server. You\'ll be notified when we\'re back!' }
+                            )
+                            .setColor(0xFF6B6B)
+                            .setFooter({ text: 'Thank you for your patience! 💚' })
+                            .setTimestamp();
+                        await guildMember.send({ embeds: [dmEmbed] });
+                        sent++;
+                        console.log(`✓ Sent DM to ${guildMember.user.tag} (${sent} sent)`);
+                        
+                        // Small delay to avoid rate limits
+                        if (sent % 5 === 0) {
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                        }
+                    } catch (dmError) {
+                        failed++;
+                        console.log(`✗ Could not DM ${guildMember.user.tag}: ${dmError.message}`);
+                    }
+                }
+                
+                await message.channel.send(`✅ **MASS DM COMPLETE**\n• Sent: ${sent} DMs\n• Failed: ${failed} (DMs disabled or blocked)`);
+                
+            } catch (error) {
+                console.error('Mass DM error:', error);
+                await message.reply(`❌ Error: ${error.message}`);
             }
             return;
         }
