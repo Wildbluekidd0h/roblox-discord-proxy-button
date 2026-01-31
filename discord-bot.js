@@ -3347,96 +3347,114 @@ async function postPingRolesMessage() {
         if (GENDER_ROLES.length > 0) {
             console.log('Posting gender roles...');
             console.log('GENDER_ROLES:', JSON.stringify(GENDER_ROLES));
-            const genderDescriptions = GENDER_ROLES.map(role => 
-                `${role.emoji} **${role.label}**`
-            ).join(' • ');
-            
-            const genderEmbed = new EmbedBuilder()
-                .setTitle('⚧️ Gender Roles')
-                .setDescription('Select your gender identity.\nClick once to **add** the role, click again to **remove** it.\n\n' + genderDescriptions)
-                .setColor(0xFF69B4)
-                .setFooter({ text: 'You can select one or more roles' });
-            
-            const genderRows = [];
-            for (let i = 0; i < GENDER_ROLES.length; i += 5) {
-                const row = new ActionRowBuilder();
-                const rolesInRow = GENDER_ROLES.slice(i, i + 5);
+            try {
+                const genderDescriptions = GENDER_ROLES.map(role => 
+                    `${role.emoji} **${role.label}**`
+                ).join(' • ');
                 
-                for (const role of rolesInRow) {
-                    row.addComponents(
-                        new ButtonBuilder()
-                            .setCustomId(`gender_role_${role.id}`)
-                            .setLabel(role.label)
-                            .setEmoji(role.emoji)
-                            .setStyle(ButtonStyle.Secondary)
-                    );
+                const genderEmbed = new EmbedBuilder()
+                    .setTitle('⚧️ Gender Roles')
+                    .setDescription('Select your gender identity.\nClick once to **add** the role, click again to **remove** it.\n\n' + genderDescriptions)
+                    .setColor(0xFF69B4)
+                    .setFooter({ text: 'You can select one or more roles' });
+                
+                const genderRows = [];
+                for (let i = 0; i < GENDER_ROLES.length; i += 5) {
+                    const row = new ActionRowBuilder();
+                    const rolesInRow = GENDER_ROLES.slice(i, i + 5);
+                    
+                    for (const role of rolesInRow) {
+                        row.addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`gender_role_${role.id}`)
+                                .setLabel(role.label)
+                                .setEmoji(role.emoji)
+                                .setStyle(ButtonStyle.Secondary)
+                        );
+                    }
+                    genderRows.push(row);
                 }
-                genderRows.push(row);
+                
+                const messages = await channel.messages.fetch({ limit: 20 });
+                const existingGenderMessage = messages.find(m => 
+                    m.author.id === client.user.id && 
+                    m.embeds.length > 0 &&
+                    m.embeds[0].title?.includes('Gender Roles')
+                );
+                
+                if (existingGenderMessage) {
+                    await existingGenderMessage.edit({ embeds: [genderEmbed], components: genderRows });
+                    console.log('✓ Updated existing gender roles message');
+                } else {
+                    await channel.send({ embeds: [genderEmbed], components: genderRows });
+                    console.log('✓ Posted new gender roles message');
+                }
+            } catch (genderErr) {
+                console.error('❌ Error posting gender roles:', genderErr.message);
+                console.error('Full error:', genderErr);
             }
-            
-            const messages = await channel.messages.fetch({ limit: 20 });
-            const existingGenderMessage = messages.find(m => 
-                m.author.id === client.user.id && 
-                m.embeds.length > 0 &&
-                m.embeds[0].title?.includes('Gender Roles')
-            );
-            
-            if (existingGenderMessage) {
-                await existingGenderMessage.edit({ embeds: [genderEmbed], components: genderRows });
-                console.log('✓ Updated existing gender roles message');
-            } else {
-                await channel.send({ embeds: [genderEmbed], components: genderRows });
-                console.log('✓ Posted new gender roles message');
-            }
+        } else {
+            console.log('⚠️ GENDER_ROLES is empty, skipping gender roles message');
         }
         
         // ========== VORE PREFERENCE ROLES ==========
         if (VORE_ROLES.length > 0) {
-            const voreDescriptions = VORE_ROLES.map(role => 
-                `${role.emoji} **${role.label}** - ${role.description}`
-            ).join('\n');
-            
-            const voreEmbed = new EmbedBuilder()
-                .setTitle('🍽️ Vore Preference Roles')
-                .setDescription('Select your vore preference.\nClick once to **add** the role, click again to **remove** it.\n\n' + voreDescriptions)
-                .setColor(0x9B59B6)
-                .setFooter({ text: 'You can select one or more roles' });
-            
-            const voreRows = [];
-            for (let i = 0; i < VORE_ROLES.length; i += 5) {
-                const row = new ActionRowBuilder();
-                const rolesInRow = VORE_ROLES.slice(i, i + 5);
+            console.log('Posting vore roles...');
+            try {
+                const voreDescriptions = VORE_ROLES.map(role => 
+                    `${role.emoji} **${role.label}** - ${role.description}`
+                ).join('\n');
                 
-                for (const role of rolesInRow) {
-                    row.addComponents(
-                        new ButtonBuilder()
-                            .setCustomId(`vore_role_${role.id}`)
-                            .setLabel(role.label)
-                            .setEmoji(role.emoji)
-                            .setStyle(ButtonStyle.Secondary)
-                    );
+                const voreEmbed = new EmbedBuilder()
+                    .setTitle('🍽️ Vore Preference Roles')
+                    .setDescription('Select your vore preference.\nClick once to **add** the role, click again to **remove** it.\n\n' + voreDescriptions)
+                    .setColor(0x9B59B6)
+                    .setFooter({ text: 'You can select one or more roles' });
+                
+                const voreRows = [];
+                for (let i = 0; i < VORE_ROLES.length; i += 5) {
+                    const row = new ActionRowBuilder();
+                    const rolesInRow = VORE_ROLES.slice(i, i + 5);
+                    
+                    for (const role of rolesInRow) {
+                        row.addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`vore_role_${role.id}`)
+                                .setLabel(role.label)
+                                .setEmoji(role.emoji)
+                                .setStyle(ButtonStyle.Secondary)
+                        );
+                    }
+                    voreRows.push(row);
                 }
-                voreRows.push(row);
+                
+                const messages = await channel.messages.fetch({ limit: 20 });
+                const existingVoreMessage = messages.find(m => 
+                    m.author.id === client.user.id && 
+                    m.embeds.length > 0 &&
+                    m.embeds[0].title?.includes('Vore Preference Roles')
+                );
+                
+                if (existingVoreMessage) {
+                    await existingVoreMessage.edit({ embeds: [voreEmbed], components: voreRows });
+                    console.log('✓ Updated existing vore preference roles message');
+                } else {
+                    await channel.send({ embeds: [voreEmbed], components: voreRows });
+                    console.log('✓ Posted new vore preference roles message');
+                }
+            } catch (voreErr) {
+                console.error('❌ Error posting vore roles:', voreErr.message);
+                console.error('Full error:', voreErr);
             }
-            
-            const messages = await channel.messages.fetch({ limit: 20 });
-            const existingVoreMessage = messages.find(m => 
-                m.author.id === client.user.id && 
-                m.embeds.length > 0 &&
-                m.embeds[0].title?.includes('Vore Preference Roles')
-            );
-            
-            if (existingVoreMessage) {
-                await existingVoreMessage.edit({ embeds: [voreEmbed], components: voreRows });
-                console.log('✓ Updated existing vore preference roles message');
-            } else {
-                await channel.send({ embeds: [voreEmbed], components: voreRows });
-                console.log('✓ Posted new vore preference roles message');
-            }
+        } else {
+            console.log('⚠️ VORE_ROLES is empty, skipping vore roles message');
         }
+        
+        console.log('✓ postPingRolesMessage completed');
         
     } catch (err) {
         console.error('Failed to post roles messages:', err.message);
+        console.error('Full error:', err);
     }
 }
 

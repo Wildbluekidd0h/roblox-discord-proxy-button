@@ -276,7 +276,7 @@ verifyButton.MouseButton1Click:Connect(function()
         verifyButton.Text = "Enter Username!"
         verifyButton.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
         wait(1)
-        verifyButton.Text = "Request Verification"
+        verifyButton.Text = "Request 18+ Verification"
         verifyButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
         return
     end
@@ -337,7 +337,7 @@ verifyButton.MouseButton1Click:Connect(function()
                     verifyButton.Text = "Verification Denied"
                     verifyButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
                     wait(2)
-                    verifyButton.Text = "Request Verification"
+                    verifyButton.Text = "Request 18+ Verification"
                     verifyButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
                     verifyButton.Active = true
                     return
@@ -346,7 +346,7 @@ verifyButton.MouseButton1Click:Connect(function()
                     verifyButton.Text = "Request Expired"
                     verifyButton.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
                     wait(2)
-                    verifyButton.Text = "Request Verification"
+                    verifyButton.Text = "Request 18+ Verification"
                     verifyButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
                     verifyButton.Active = true
                     return
@@ -382,7 +382,7 @@ verifyButton.MouseButton1Click:Connect(function()
         verifyButton.Text = errorMessage
         verifyButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
         wait(2)
-        verifyButton.Text = "Request Verification"
+        verifyButton.Text = "Request 18+ Verification"
         verifyButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
         verifyButton.Active = true
     end
@@ -445,5 +445,50 @@ if verificationApprovedEvent then
 else
     warn("✗ VerificationApproved event not found! Staff approval won't work.")
 end
+
+-- Set up 18+ verification message and friend referral question
+local function setupVerificationMessages()
+    if verificationFrame then
+        -- Find or create the title/description labels
+        local titleLabel = verificationFrame:FindFirstChild("TitleLabel")
+        local descriptionLabel = verificationFrame:FindFirstChild("DescriptionLabel")
+        local friendReferralLabel = verificationFrame:FindFirstChild("FriendReferralLabel")
+        
+        -- Update title if exists
+        if titleLabel and titleLabel:IsA("TextLabel") then
+            titleLabel.Text = "18+ Verification Required"
+            print("✓ Updated title to 18+ verification")
+        end
+        
+        -- Update description if exists
+        if descriptionLabel and descriptionLabel:IsA("TextLabel") then
+            descriptionLabel.Text = "This is an 18+ community. Please enter your Discord username to verify your age."
+            print("✓ Updated description for 18+ verification")
+        end
+        
+        -- Look for any TextLabel that might contain verification text
+        for _, child in pairs(verificationFrame:GetChildren()) do
+            if child:IsA("TextLabel") then
+                local text = child.Text:lower()
+                if text:find("verify") or text:find("discord") or text:find("enter") then
+                    child.Text = "18+ Verification Required\n\nThis is an 18+ community. Please enter your Discord username to verify.\n\nIf you were invited by a friend, please let us know who invited you!"
+                    child.TextWrapped = true
+                    print("✓ Updated verification label:", child.Name)
+                end
+            end
+        end
+        
+        -- Create friend referral label if it doesn't exist
+        if not friendReferralLabel then
+            -- Check if there's a TextBox for friend referral
+            local friendReferralBox = verificationFrame:FindFirstChild("FriendReferralBox")
+            if not friendReferralBox then
+                print("Note: No FriendReferralBox found. Consider adding a TextBox named 'FriendReferralBox' for friend referrals.")
+            end
+        end
+    end
+end
+
+setupVerificationMessages()
 
 print("✓ Manual Verification Client loaded! Ready to verify.")
