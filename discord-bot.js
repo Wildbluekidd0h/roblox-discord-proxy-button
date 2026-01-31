@@ -616,6 +616,34 @@ app.post('/request-verification', async (req, res) => {
                 autoJoin: true
             });
             
+            // Log to Discord channel that a new player joined and needs verification
+            if (client.user && IN_GAME_VERIFICATION_LOG_CHANNEL_ID) {
+                try {
+                    const logChannel = await client.channels.fetch(IN_GAME_VERIFICATION_LOG_CHANNEL_ID);
+                    const { EmbedBuilder } = require('discord.js');
+                    
+                    const joinEmbed = new EmbedBuilder()
+                        .setTitle('🎮 New Player Joined Game')
+                        .setDescription(`A new unverified player has joined the game.`)
+                        .setColor(0xffa500) // Orange for pending
+                        .addFields(
+                            { name: '👤 Roblox Username', value: playerName, inline: true },
+                            { name: '🏷️ Display Name', value: displayName || playerName, inline: true },
+                            { name: '🆔 User ID', value: String(userId), inline: true },
+                            { name: '📅 Account Age', value: accountAge ? `${accountAge} days` : 'Unknown', inline: true },
+                            { name: '🔗 Profile', value: `[View Profile](https://www.roblox.com/users/${robloxUserId || userId}/profile)`, inline: true },
+                            { name: '📋 Status', value: '⏳ Waiting for Discord verification', inline: true }
+                        )
+                        .setTimestamp()
+                        .setFooter({ text: `Verification ID: ${verificationId}` });
+                    
+                    await logChannel.send({ embeds: [joinEmbed] });
+                    console.log(`✓ Logged new player join to Discord: ${playerName}`);
+                } catch (logErr) {
+                    console.error('Failed to log player join to Discord:', logErr.message);
+                }
+            }
+            
             // Auto-expire after 30 minutes for auto-join
             setTimeout(() => {
                 const verification = pendingVerifications.get(verificationId);
@@ -656,23 +684,58 @@ app.post('/request-verification', async (req, res) => {
             
             // Check if it's a username (not a numeric ID)
             if (isNaN(discordId)) {
-                // Search by username using query (much faster than fetching all members)
-                const searchResults = await guild.members.search({ query: discordId, limit: 10 });
+                // Clean up the input (remove @ symbol, extra spaces, etc.)
+                const cleanUsername = discordId.trim().replace(/^@/, '').toLowerCase();
                 
-                // Find exact match
-                const member = searchResults.find(m => 
-                    m.user.username.toLowerCase() === discordId.toLowerCase() ||
-                    m.user.tag.toLowerCase() === discordId.toLowerCase() ||
-                    (m.user.globalName && m.user.globalName.toLowerCase() === discordId.toLowerCase())
-                );
+                // Search by username using query (much faster than fetching all members)
+                const searchResults = await guild.members.search({ query: cleanUsername, limit: 50 });
+                
+                console.log(`Searching for: "${cleanUsername}", found ${searchResults.size} potential matches`);
+                
+                // Find exact match (check multiple fields)
+                let member = searchResults.find(m => {
+                    const username = m.user.username?.toLowerCase() || '';
+                    const globalName = m.user.globalName?.toLowerCase() || '';
+                    const displayName = m.displayName?.toLowerCase() || '';
+                    const tag = m.user.tag?.toLowerCase() || '';
+                    const nickname = m.nickname?.toLowerCase() || '';
+                    
+                    return username === cleanUsername ||
+                           globalName === cleanUsername ||
+                           displayName === cleanUsername ||
+                           tag === cleanUsername ||
+                           tag.split('#')[0] === cleanUsername ||
+                           nickname === cleanUsername;
+                });
+                
+                // If no exact match, try partial match
+                if (!member && searchResults.size > 0) {
+                    member = searchResults.find(m => {
+                        const username = m.user.username?.toLowerCase() || '';
+                        const globalName = m.user.globalName?.toLowerCase() || '';
+                        const displayName = m.displayName?.toLowerCase() || '';
+                        
+                        return username.includes(cleanUsername) ||
+                               cleanUsername.includes(username) ||
+                               globalName.includes(cleanUsername) ||
+                               cleanUsername.includes(globalName) ||
+                               displayName.includes(cleanUsername) ||
+                               cleanUsername.includes(displayName);
+                    });
+                    
+                    if (member) {
+                        console.log(`Found partial match: ${member.user.username}`);
+                    }
+                }
                 
                 if (member) {
                     discordUser = member.user;
                     actualDiscordId = member.user.id;
-                    console.log(`✓ Found user by username: ${discordUser.tag} (ID: ${actualDiscordId})`);
+                    console.log(`✓ Found user by username: ${discordUser.tag} (ID: ${actualDiscordId}, globalName: ${discordUser.globalName})`);
                 } else {
                     console.warn(`User not found with username: ${discordId}`);
-                    return res.json({ success: false, message: 'Discord user not found. Make sure you entered your username correctly and that you are in the server.' });
+                    console.log(`Search results were:`, searchResults.map(m => `${m.user.username} / ${m.user.globalName} / ${m.displayName}`).join(', ') || 'none');
+                    return res.json({ success: false, message: `Discord user "${discordId}" not found. Make sure you:\n1. Entered your EXACT Discord username (not display name)\n2. Are already in the Discord server\n\nYour username is shown in your Discord profile settings.` });
                 }
             } else {
                 // It's a numeric ID, fetch directly
@@ -681,7 +744,7 @@ app.post('/request-verification', async (req, res) => {
             }
         } catch (fetchError) {
             console.error('Error finding Discord user:', fetchError.message);
-            return res.json({ success: false, message: 'Discord user not found. Make sure you entered your username correctly.' });
+            return res.json({ success: false, message: `Could not find Discord user "${discordId}". Make sure you entered your username correctly and are in the server.` });
         }
         
         // Generate unique verification ID (for normal flow)
@@ -2271,15 +2334,21 @@ client.on('messageCreate', async (message) => {
             
             try {
                 // First, create/find the gender and vore roles
+                console.log('Starting setupSelfAssignRoles...');
                 await setupSelfAssignRoles(message.guild);
+                console.log(`After setup - Gender: ${GENDER_ROLES.length}, Vore: ${VORE_ROLES.length}, Ping: ${PING_ROLES.length}`);
                 
                 // Then post the role selection messages
+                console.log('Starting postPingRolesMessage...');
+                console.log(`Channel ID: ${PING_ROLES_CHANNEL_ID}`);
                 await postPingRolesMessage();
+                console.log('postPingRolesMessage completed');
                 
                 const summary = `✅ Roles setup complete!\n• Ping Roles: ${PING_ROLES.length}\n• Gender Roles: ${GENDER_ROLES.length}\n• Vore Roles: ${VORE_ROLES.length}\n\nMessages posted to <#${PING_ROLES_CHANNEL_ID}>`;
                 await message.channel.send(summary);
             } catch (err) {
-                await message.channel.send(`❌ Failed: ${err.message}`);
+                console.error('!pingroles error:', err);
+                await message.channel.send(`❌ Failed: ${err.message}\n\`\`\`${err.stack?.substring(0, 500)}\`\`\``);
             }
             return;
         }
