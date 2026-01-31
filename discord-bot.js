@@ -1270,6 +1270,11 @@ const processedMessages = new Set();
 // Staff role ID for group management commands
 const STAFF_ROLE_ID = '1386816989137211575';
 
+// Shutdown mode configuration
+const SHUTDOWN_CHANNEL_ID = '1466993014164422677'; // Channel users can see during shutdown
+let serverShutdownMode = false;
+const savedRoles = new Map(); // Maps user ID to their saved roles
+
 // Handle messages (DMs for verification + server commands for staff)
 client.on('messageCreate', async (message) => {
     // Ignore bot messages
@@ -1282,6 +1287,161 @@ client.on('messageCreate', async (message) => {
     
     // Handle server commands (not DMs)
     if (message.guild) {
+        
+        // ============ SHUTDOWN COMMAND (Owner/Admin only) ============
+        if (message.content.toLowerCase() === '!shutdown') {
+            const member = message.member;
+            // Only allow server owner or admins
+            if (!member || (!member.permissions.has('Administrator') && message.guild.ownerId !== message.author.id)) {
+                return message.reply('❌ Only administrators can use this command.');
+            }
+            
+            if (serverShutdownMode) {
+                return message.reply('⚠️ Server is already in shutdown mode. Use `!restore` to restore roles.');
+            }
+            
+            await message.reply('🔄 **INITIATING SERVER SHUTDOWN MODE...**\nThis will remove all roles and restrict access. Please wait...');
+            
+            try {
+                const guild = message.guild;
+                
+                // Create or find shutdown role
+                let shutdownRole = guild.roles.cache.find(r => r.name === 'Server Shutdown');
+                if (!shutdownRole) {
+                    shutdownRole = await guild.roles.create({
+                        name: 'Server Shutdown',
+                        color: 0x808080, // Gray
+                        reason: 'Server shutdown mode',
+                        permissions: [] // No permissions
+                    });
+                    console.log(`✓ Created "Server Shutdown" role: ${shutdownRole.id}`);
+                }
+                
+                // Set channel permissions - only allow viewing the shutdown channel
+                const shutdownChannel = guild.channels.cache.get(SHUTDOWN_CHANNEL_ID);
+                if (shutdownChannel) {
+                    await shutdownChannel.permissionOverwrites.edit(shutdownRole, {
+                        ViewChannel: true,
+                        SendMessages: false,
+                        ReadMessageHistory: true
+                    });
+                    console.log(`✓ Set permissions for shutdown channel`);
+                }
+                
+                // Deny the shutdown role from viewing all other channels
+                for (const [channelId, channel] of guild.channels.cache) {
+                    if (channelId !== SHUTDOWN_CHANNEL_ID && channel.permissionOverwrites) {
+                        try {
+                            await channel.permissionOverwrites.edit(shutdownRole, {
+                                ViewChannel: false
+                            });
+                        } catch (e) {
+                            // Skip channels we can't edit
+                        }
+                    }
+                }
+                
+                // Process all members
+                const members = await guild.members.fetch();
+                let processed = 0;
+                let errors = 0;
+                
+                for (const [memberId, guildMember] of members) {
+                    // Skip bots and the person running the command
+                    if (guildMember.user.bot) continue;
+                    if (memberId === message.author.id) continue;
+                    
+                    try {
+                        // Save their current roles (excluding @everyone and managed roles)
+                        const memberRoles = guildMember.roles.cache
+                            .filter(r => r.id !== guild.id && !r.managed)
+                            .map(r => r.id);
+                        savedRoles.set(memberId, memberRoles);
+                        
+                        // Remove all their roles and add shutdown role
+                        await guildMember.roles.set([shutdownRole.id]);
+                        processed++;
+                        
+                        if (processed % 10 === 0) {
+                            console.log(`Processed ${processed} members...`);
+                        }
+                    } catch (e) {
+                        console.error(`Failed to process ${guildMember.user.tag}: ${e.message}`);
+                        errors++;
+                    }
+                }
+                
+                serverShutdownMode = true;
+                
+                // Send message to shutdown channel
+                if (shutdownChannel) {
+                    const shutdownEmbed = new EmbedBuilder()
+                        .setTitle('🔒 Server Temporarily Closed')
+                        .setDescription('The server is currently undergoing maintenance or has been temporarily shut down.\n\nPlease wait for further announcements.')
+                        .setColor(0xFF0000)
+                        .setTimestamp();
+                    await shutdownChannel.send({ embeds: [shutdownEmbed] });
+                }
+                
+                await message.channel.send(`✅ **SERVER SHUTDOWN COMPLETE**\n• Processed: ${processed} members\n• Errors: ${errors}\n• Shutdown role created/applied\n• Users can only see <#${SHUTDOWN_CHANNEL_ID}>\n\nUse \`!restore\` to restore all roles.`);
+                
+            } catch (error) {
+                console.error('Shutdown error:', error);
+                await message.reply(`❌ Error during shutdown: ${error.message}`);
+            }
+            return;
+        }
+        
+        // ============ RESTORE COMMAND (Owner/Admin only) ============
+        if (message.content.toLowerCase() === '!restore') {
+            const member = message.member;
+            if (!member || (!member.permissions.has('Administrator') && message.guild.ownerId !== message.author.id)) {
+                return message.reply('❌ Only administrators can use this command.');
+            }
+            
+            if (!serverShutdownMode) {
+                return message.reply('⚠️ Server is not in shutdown mode.');
+            }
+            
+            await message.reply('🔄 **RESTORING ROLES...**\nPlease wait...');
+            
+            try {
+                const guild = message.guild;
+                let restored = 0;
+                let errors = 0;
+                
+                for (const [memberId, roleIds] of savedRoles) {
+                    try {
+                        const guildMember = await guild.members.fetch(memberId).catch(() => null);
+                        if (guildMember && roleIds.length > 0) {
+                            await guildMember.roles.set(roleIds);
+                            restored++;
+                        }
+                    } catch (e) {
+                        console.error(`Failed to restore roles for ${memberId}: ${e.message}`);
+                        errors++;
+                    }
+                }
+                
+                // Clear saved roles
+                savedRoles.clear();
+                serverShutdownMode = false;
+                
+                // Optionally delete the shutdown role
+                const shutdownRole = guild.roles.cache.find(r => r.name === 'Server Shutdown');
+                if (shutdownRole) {
+                    await shutdownRole.delete('Server restored').catch(() => {});
+                }
+                
+                await message.channel.send(`✅ **ROLES RESTORED**\n• Restored: ${restored} members\n• Errors: ${errors}\n• Server is back to normal!`);
+                
+            } catch (error) {
+                console.error('Restore error:', error);
+                await message.reply(`❌ Error during restore: ${error.message}`);
+            }
+            return;
+        }
+        
         // Check for !grouprequests command (staff only)
         if (message.content.toLowerCase() === '!grouprequests') {
             console.log(`!grouprequests command from ${message.author.tag}`);
