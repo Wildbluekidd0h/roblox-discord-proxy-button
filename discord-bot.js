@@ -44,8 +44,11 @@ const AUTO_ROLE_ID = process.env.AUTO_ROLE_ID || null;
 const VERIFIED_MEMBER_ROLE_ID = process.env.VERIFIED_MEMBER_ROLE_ID || null;
 
 // Manual verification channels (run !setupserver to create)
-const VERIFICATION_LOG_CHANNEL_ID = process.env.VERIFICATION_LOG_CHANNEL_ID || null;
+const VERIFICATION_LOG_CHANNEL_ID = process.env.VERIFICATION_LOG_CHANNEL_ID || '1467019082409840672';
 const HOW_TO_VERIFY_CHANNEL_ID = process.env.HOW_TO_VERIFY_CHANNEL_ID || null;
+
+// In-game verification logs channel (logs when people verify in-game)
+const IN_GAME_VERIFICATION_LOG_CHANNEL_ID = process.env.IN_GAME_VERIFICATION_LOG_CHANNEL_ID || '1467045351969128530';
 
 // Roblox Group Configuration
 const ROBLOX_GROUP_ID = process.env.ROBLOX_GROUP_ID || null; // Your Roblox group ID
@@ -3487,9 +3490,9 @@ client.on('interactionCreate', async (interaction) => {
         
         await interaction.editReply({ embeds: [successEmbed], components: [] });
         
-        // Log to staff channel
+        // Log to in-game verification log channel
         try {
-            const logChannel = await client.channels.fetch(process.env.DISCORD_VERIFICATION_CHANNEL_ID);
+            const logChannel = await client.channels.fetch(IN_GAME_VERIFICATION_LOG_CHANNEL_ID);
             const logEmbed = new EmbedBuilder()
                 .setTitle('✅ New Verification (Code Verified)')
                 .setColor(0x00ff00)
@@ -4386,9 +4389,9 @@ client.on('interactionCreate', async (interaction) => {
         
         console.log(`✓ User ${interaction.user.tag} verified automatically (Discord: ${verification.discordId}, Roblox: ${verification.playerName})`);
         
-        // Optionally log to staff channel (just for info, no action needed)
+        // Log to in-game verification log channel
         try {
-            const channelId = process.env.DISCORD_VERIFICATION_CHANNEL_ID;
+            const channelId = IN_GAME_VERIFICATION_LOG_CHANNEL_ID;
             if (channelId) {
                 const channel = await client.channels.fetch(channelId);
                 const embed = new EmbedBuilder()
