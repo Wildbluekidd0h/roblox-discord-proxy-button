@@ -3364,30 +3364,45 @@ async function postPingRolesMessage() {
                     const rolesInRow = GENDER_ROLES.slice(i, i + 5);
                     
                     for (const role of rolesInRow) {
-                        row.addComponents(
-                            new ButtonBuilder()
-                                .setCustomId(`gender_role_${role.id}`)
-                                .setLabel(role.label)
-                                .setEmoji(role.emoji)
-                                .setStyle(ButtonStyle.Secondary)
-                        );
+                        // Validate role data
+                        if (!role.id) {
+                            console.error(`Skipping gender role ${role.label} - no ID`);
+                            continue;
+                        }
+                        const button = new ButtonBuilder()
+                            .setCustomId(`gender_role_${role.id}`)
+                            .setLabel(role.label || 'Unknown')
+                            .setStyle(ButtonStyle.Secondary);
+                        
+                        // Only add emoji if it's a simple unicode emoji (not custom)
+                        if (role.emoji && !role.emoji.includes(':')) {
+                            button.setEmoji(role.emoji);
+                        }
+                        
+                        row.addComponents(button);
                     }
-                    genderRows.push(row);
+                    if (row.components.length > 0) {
+                        genderRows.push(row);
+                    }
                 }
                 
-                const messages = await channel.messages.fetch({ limit: 20 });
-                const existingGenderMessage = messages.find(m => 
-                    m.author.id === client.user.id && 
-                    m.embeds.length > 0 &&
-                    m.embeds[0].title?.includes('Gender Roles')
-                );
-                
-                if (existingGenderMessage) {
-                    await existingGenderMessage.edit({ embeds: [genderEmbed], components: genderRows });
-                    console.log('✓ Updated existing gender roles message');
+                if (genderRows.length === 0) {
+                    console.log('⚠️ No valid gender role buttons to add');
                 } else {
-                    await channel.send({ embeds: [genderEmbed], components: genderRows });
-                    console.log('✓ Posted new gender roles message');
+                    const messages = await channel.messages.fetch({ limit: 20 });
+                    const existingGenderMessage = messages.find(m => 
+                        m.author.id === client.user.id && 
+                        m.embeds.length > 0 &&
+                        m.embeds[0].title?.includes('Gender Roles')
+                    );
+                    
+                    if (existingGenderMessage) {
+                        await existingGenderMessage.edit({ embeds: [genderEmbed], components: genderRows });
+                        console.log('✓ Updated existing gender roles message');
+                    } else {
+                        await channel.send({ embeds: [genderEmbed], components: genderRows });
+                        console.log('✓ Posted new gender roles message');
+                    }
                 }
             } catch (genderErr) {
                 console.error('❌ Error posting gender roles:', genderErr.message);
@@ -3417,30 +3432,45 @@ async function postPingRolesMessage() {
                     const rolesInRow = VORE_ROLES.slice(i, i + 5);
                     
                     for (const role of rolesInRow) {
-                        row.addComponents(
-                            new ButtonBuilder()
-                                .setCustomId(`vore_role_${role.id}`)
-                                .setLabel(role.label)
-                                .setEmoji(role.emoji)
-                                .setStyle(ButtonStyle.Secondary)
-                        );
+                        // Validate role data
+                        if (!role.id) {
+                            console.error(`Skipping vore role ${role.label} - no ID`);
+                            continue;
+                        }
+                        const button = new ButtonBuilder()
+                            .setCustomId(`vore_role_${role.id}`)
+                            .setLabel(role.label || 'Unknown')
+                            .setStyle(ButtonStyle.Secondary);
+                        
+                        // Only add emoji if it's a simple unicode emoji (not custom)
+                        if (role.emoji && !role.emoji.includes(':')) {
+                            button.setEmoji(role.emoji);
+                        }
+                        
+                        row.addComponents(button);
                     }
-                    voreRows.push(row);
+                    if (row.components.length > 0) {
+                        voreRows.push(row);
+                    }
                 }
                 
-                const messages = await channel.messages.fetch({ limit: 20 });
-                const existingVoreMessage = messages.find(m => 
-                    m.author.id === client.user.id && 
-                    m.embeds.length > 0 &&
-                    m.embeds[0].title?.includes('Vore Preference Roles')
-                );
-                
-                if (existingVoreMessage) {
-                    await existingVoreMessage.edit({ embeds: [voreEmbed], components: voreRows });
-                    console.log('✓ Updated existing vore preference roles message');
+                if (voreRows.length === 0) {
+                    console.log('⚠️ No valid vore role buttons to add');
                 } else {
-                    await channel.send({ embeds: [voreEmbed], components: voreRows });
-                    console.log('✓ Posted new vore preference roles message');
+                    const messages = await channel.messages.fetch({ limit: 20 });
+                    const existingVoreMessage = messages.find(m => 
+                        m.author.id === client.user.id && 
+                        m.embeds.length > 0 &&
+                        m.embeds[0].title?.includes('Vore Preference Roles')
+                    );
+                    
+                    if (existingVoreMessage) {
+                        await existingVoreMessage.edit({ embeds: [voreEmbed], components: voreRows });
+                        console.log('✓ Updated existing vore preference roles message');
+                    } else {
+                        await channel.send({ embeds: [voreEmbed], components: voreRows });
+                        console.log('✓ Posted new vore preference roles message');
+                    }
                 }
             } catch (voreErr) {
                 console.error('❌ Error posting vore roles:', voreErr.message);
@@ -3985,7 +4015,7 @@ client.on('interactionCreate', async (interaction) => {
         if (!interaction.guild) {
             await interaction.reply({
                 content: '❌ This can only be used in a server.',
-                ephemeral: true
+                flags: 64 // Ephemeral
             });
             return;
         }
@@ -3997,7 +4027,7 @@ client.on('interactionCreate', async (interaction) => {
             if (!role) {
                 await interaction.reply({
                     content: '❌ This role no longer exists. Please contact a staff member.',
-                    ephemeral: true
+                    flags: 64
                 });
                 return;
             }
@@ -4008,23 +4038,25 @@ client.on('interactionCreate', async (interaction) => {
                 await member.roles.remove(roleId);
                 await interaction.reply({
                     content: `✅ Removed the **${role.name}** role.`,
-                    ephemeral: true
+                    flags: 64
                 });
                 console.log(`✓ Removed gender role ${role.name} from ${interaction.user.tag}`);
             } else {
                 await member.roles.add(roleId);
                 await interaction.reply({
                     content: `✅ Added the **${role.name}** role!`,
-                    ephemeral: true
+                    flags: 64
                 });
                 console.log(`✓ Added gender role ${role.name} to ${interaction.user.tag}`);
             }
         } catch (err) {
             console.error('Error toggling gender role:', err.message);
-            await interaction.reply({
-                content: '❌ Failed to toggle the role. The bot may not have permission to manage roles.',
-                ephemeral: true
-            });
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({
+                    content: '❌ Failed to toggle the role. The bot may not have permission to manage roles.',
+                    flags: 64
+                }).catch(() => {});
+            }
         }
         return;
     }
@@ -4036,7 +4068,7 @@ client.on('interactionCreate', async (interaction) => {
         if (!interaction.guild) {
             await interaction.reply({
                 content: '❌ This can only be used in a server.',
-                ephemeral: true
+                flags: 64 // Ephemeral
             });
             return;
         }
@@ -4048,7 +4080,7 @@ client.on('interactionCreate', async (interaction) => {
             if (!role) {
                 await interaction.reply({
                     content: '❌ This role no longer exists. Please contact a staff member.',
-                    ephemeral: true
+                    flags: 64
                 });
                 return;
             }
@@ -4059,23 +4091,25 @@ client.on('interactionCreate', async (interaction) => {
                 await member.roles.remove(roleId);
                 await interaction.reply({
                     content: `✅ Removed the **${role.name}** role.`,
-                    ephemeral: true
+                    flags: 64
                 });
                 console.log(`✓ Removed vore role ${role.name} from ${interaction.user.tag}`);
             } else {
                 await member.roles.add(roleId);
                 await interaction.reply({
                     content: `✅ Added the **${role.name}** role!`,
-                    ephemeral: true
+                    flags: 64
                 });
                 console.log(`✓ Added vore role ${role.name} to ${interaction.user.tag}`);
             }
         } catch (err) {
             console.error('Error toggling vore role:', err.message);
-            await interaction.reply({
-                content: '❌ Failed to toggle the role. The bot may not have permission to manage roles.',
-                ephemeral: true
-            });
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({
+                    content: '❌ Failed to toggle the role. The bot may not have permission to manage roles.',
+                    flags: 64
+                }).catch(() => {});
+            }
         }
         return;
     }
