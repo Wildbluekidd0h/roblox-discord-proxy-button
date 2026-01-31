@@ -37,15 +37,15 @@ const REQUIRE_MATCHING_DISPLAY_NAME = process.env.REQUIRE_MATCHING_DISPLAY_NAME 
 // Verification channel where the verify button will be posted
 const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID || process.env.DISCORD_VERIFICATION_CHANNEL_ID;
 
-// Role to give to new members when they join the server
-const AUTO_ROLE_ID = '1462613689168302183';
+// Role to give to new members when they join the server (run !setupserver to create)
+const AUTO_ROLE_ID = process.env.AUTO_ROLE_ID || null;
 
 // Additional role to give when verified (e.g., member role)
-const VERIFIED_MEMBER_ROLE_ID = '1336560854199439411';
+const VERIFIED_MEMBER_ROLE_ID = process.env.VERIFIED_MEMBER_ROLE_ID || null;
 
-// Manual verification channels
-const VERIFICATION_LOG_CHANNEL_ID = '1386815060428722196';
-const HOW_TO_VERIFY_CHANNEL_ID = '1462633444407513118';
+// Manual verification channels (run !setupserver to create)
+const VERIFICATION_LOG_CHANNEL_ID = process.env.VERIFICATION_LOG_CHANNEL_ID || null;
+const HOW_TO_VERIFY_CHANNEL_ID = process.env.HOW_TO_VERIFY_CHANNEL_ID || null;
 
 // Roblox Group Configuration
 const ROBLOX_GROUP_ID = process.env.ROBLOX_GROUP_ID || null; // Your Roblox group ID
@@ -1007,6 +1007,228 @@ app.post('/api/group/accept-all-verified', async (req, res) => {
 
 // ==================== END GROUP MANAGEMENT ====================
 
+// ==================== SERVER SETUP COMMAND ====================
+// Run !setupserver once to create all channels and roles
+
+async function setupServer(guild) {
+    const results = { roles: {}, channels: {}, categories: {} };
+    
+    console.log('🚀 Starting server setup...');
+    
+    // ========== CREATE ROLES (bottom to top order) ==========
+    const rolesToCreate = [
+        { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
+        { name: '🌟 Boosters', color: '#f47fff', hoist: true },
+        { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
+        { name: '🔴 Banned from Game', color: '#ff0000', hoist: false },
+        { name: '⚠️ Warned', color: '#ffcc00', hoist: false },
+        { name: '🔇 Muted', color: '#808080', hoist: false },
+        { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
+        { name: '🎮 Verified Player', color: '#2ecc71', hoist: true },
+        { name: '✅ Verified', color: '#3498db', hoist: true },
+        { name: '⏳ Unverified', color: '#95a5a6', hoist: true },
+        { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
+        { name: '🎉 Event Team', color: '#e91e63', hoist: true },
+        { name: '🛡️ Moderator', color: '#e67e22', hoist: true },
+        { name: '⚔️ Admin', color: '#e74c3c', hoist: true },
+        { name: '👑 Owner', color: '#f1c40f', hoist: true },
+    ];
+    
+    for (const roleData of rolesToCreate) {
+        try {
+            const existingRole = guild.roles.cache.find(r => r.name === roleData.name);
+            if (!existingRole) {
+                const role = await guild.roles.create({
+                    name: roleData.name,
+                    color: roleData.color,
+                    hoist: roleData.hoist,
+                    mentionable: false
+                });
+                results.roles[roleData.name] = role.id;
+                console.log(`✅ Created role: ${roleData.name}`);
+            } else {
+                results.roles[roleData.name] = existingRole.id;
+                console.log(`⏭️ Role exists: ${roleData.name}`);
+            }
+        } catch (err) {
+            console.log(`❌ Failed to create role ${roleData.name}: ${err.message}`);
+        }
+    }
+    
+    // Get role references for permissions
+    const everyoneRole = guild.roles.everyone;
+    const verifiedRole = guild.roles.cache.find(r => r.name === '✅ Verified');
+    const unverifiedRole = guild.roles.cache.find(r => r.name === '⏳ Unverified');
+    const staffRole = guild.roles.cache.find(r => r.name === '🛡️ Moderator');
+    const adminRole = guild.roles.cache.find(r => r.name === '⚔️ Admin');
+    
+    // ========== CREATE CATEGORIES AND CHANNELS ==========
+    const serverStructure = [
+        {
+            name: '📢 INFORMATION',
+            channels: [
+                { name: '📜・rules', type: 0, topic: 'Server rules and guidelines' },
+                { name: '📣・announcements', type: 0, topic: 'Important server announcements' },
+                { name: '🎉・giveaways', type: 0, topic: 'Server giveaways and events' },
+                { name: '📝・changelog', type: 0, topic: 'Updates and changes to the server' },
+                { name: '🔗・socials', type: 0, topic: 'Our social media and links' },
+            ]
+        },
+        {
+            name: '🔐 VERIFICATION',
+            channels: [
+                { name: '❓・how-to-verify', type: 0, topic: 'Instructions on how to verify your account', isVerifyChannel: true },
+                { name: '✅・verify-here', type: 0, topic: 'Click the button to start verification' },
+            ]
+        },
+        {
+            name: '💬 COMMUNITY',
+            verifiedOnly: true,
+            channels: [
+                { name: '👋・introductions', type: 0, topic: 'Introduce yourself to the community!' },
+                { name: '💭・general', type: 0, topic: 'General chat for everyone' },
+                { name: '🎮・gaming', type: 0, topic: 'Talk about games' },
+                { name: '🖼️・media', type: 0, topic: 'Share images, videos, and memes' },
+                { name: '🤖・bot-commands', type: 0, topic: 'Use bot commands here' },
+            ]
+        },
+        {
+            name: '🎮 ROBLOX',
+            verifiedOnly: true,
+            channels: [
+                { name: '🏠・forest-park-chat', type: 0, topic: 'Chat about Forest Park Hangout' },
+                { name: '📸・screenshots', type: 0, topic: 'Share your in-game screenshots' },
+                { name: '💡・suggestions', type: 0, topic: 'Suggest features for the game' },
+                { name: '🐛・bug-reports', type: 0, topic: 'Report bugs in the game' },
+            ]
+        },
+        {
+            name: '🔊 VOICE CHANNELS',
+            verifiedOnly: true,
+            channels: [
+                { name: '🎙️ General Voice', type: 2 },
+                { name: '🎮 Gaming', type: 2 },
+                { name: '🎵 Music', type: 2 },
+                { name: '🔒 Private (2 max)', type: 2, userLimit: 2 },
+            ]
+        },
+        {
+            name: '🛡️ STAFF AREA',
+            staffOnly: true,
+            channels: [
+                { name: '📋・staff-chat', type: 0, topic: 'Staff discussion' },
+                { name: '📝・verification-logs', type: 0, topic: 'Verification request logs', isLogChannel: true },
+                { name: '🔨・mod-logs', type: 0, topic: 'Moderation action logs' },
+                { name: '📊・staff-commands', type: 0, topic: 'Bot commands for staff' },
+                { name: '🎙️ Staff Voice', type: 2 },
+            ]
+        },
+        {
+            name: '⚙️ ADMIN',
+            adminOnly: true,
+            channels: [
+                { name: '🔐・admin-chat', type: 0, topic: 'Admin only discussion' },
+                { name: '📜・audit-logs', type: 0, topic: 'Server audit logs' },
+                { name: '🤖・bot-config', type: 0, topic: 'Bot configuration' },
+            ]
+        }
+    ];
+    
+    for (const category of serverStructure) {
+        try {
+            // Check if category exists
+            let cat = guild.channels.cache.find(c => c.name === category.name && c.type === 4);
+            
+            if (!cat) {
+                // Set up category permissions
+                const permissionOverwrites = [
+                    { id: everyoneRole.id, deny: ['ViewChannel'] }
+                ];
+                
+                if (category.staffOnly && staffRole) {
+                    permissionOverwrites.push({ id: staffRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'] });
+                    if (adminRole) permissionOverwrites.push({ id: adminRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory', 'ManageMessages'] });
+                } else if (category.adminOnly && adminRole) {
+                    permissionOverwrites.push({ id: adminRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory', 'ManageMessages'] });
+                } else if (category.verifiedOnly && verifiedRole) {
+                    permissionOverwrites.push({ id: verifiedRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'] });
+                } else {
+                    // Public category (like INFORMATION and VERIFICATION)
+                    permissionOverwrites[0] = { id: everyoneRole.id, allow: ['ViewChannel', 'ReadMessageHistory'], deny: ['SendMessages'] };
+                }
+                
+                cat = await guild.channels.create({
+                    name: category.name,
+                    type: 4, // Category
+                    permissionOverwrites
+                });
+                console.log(`✅ Created category: ${category.name}`);
+            } else {
+                console.log(`⏭️ Category exists: ${category.name}`);
+            }
+            
+            results.categories[category.name] = cat.id;
+            
+            // Create channels in this category
+            for (const channelData of category.channels) {
+                try {
+                    const existingChannel = guild.channels.cache.find(c => c.name === channelData.name && c.parentId === cat.id);
+                    
+                    if (!existingChannel) {
+                        const channelOptions = {
+                            name: channelData.name,
+                            type: channelData.type, // 0 = text, 2 = voice
+                            parent: cat.id,
+                            topic: channelData.topic || null
+                        };
+                        
+                        if (channelData.userLimit) {
+                            channelOptions.userLimit = channelData.userLimit;
+                        }
+                        
+                        const channel = await guild.channels.create(channelOptions);
+                        results.channels[channelData.name] = channel.id;
+                        console.log(`  ✅ Created channel: ${channelData.name}`);
+                        
+                        // Mark special channels
+                        if (channelData.isVerifyChannel) {
+                            results.verifyChannelId = channel.id;
+                        }
+                        if (channelData.isLogChannel) {
+                            results.logChannelId = channel.id;
+                        }
+                    } else {
+                        results.channels[channelData.name] = existingChannel.id;
+                        if (channelData.isVerifyChannel) {
+                            results.verifyChannelId = existingChannel.id;
+                        }
+                        if (channelData.isLogChannel) {
+                            results.logChannelId = existingChannel.id;
+                        }
+                        console.log(`  ⏭️ Channel exists: ${channelData.name}`);
+                    }
+                } catch (err) {
+                    console.log(`  ❌ Failed to create channel ${channelData.name}: ${err.message}`);
+                }
+            }
+        } catch (err) {
+            console.log(`❌ Failed to create category ${category.name}: ${err.message}`);
+        }
+    }
+    
+    console.log('🎉 Server setup complete!');
+    console.log('\n📋 IMPORTANT IDs TO UPDATE IN CODE:');
+    console.log(`AUTO_ROLE_ID (Unverified): ${results.roles['⏳ Unverified'] || 'Not created'}`);
+    console.log(`VERIFIED_MEMBER_ROLE_ID: ${results.roles['✅ Verified'] || 'Not created'}`);
+    console.log(`STAFF_ROLE_ID: ${results.roles['🛡️ Moderator'] || 'Not created'}`);
+    console.log(`HOW_TO_VERIFY_CHANNEL_ID: ${results.verifyChannelId || 'Not created'}`);
+    console.log(`VERIFICATION_LOG_CHANNEL_ID: ${results.logChannelId || 'Not created'}`);
+    
+    return results;
+}
+
+// ==================== END SERVER SETUP ====================
+
 // Discord bot ready event
 client.once('ready', async () => {
     console.log(`✓ Discord Bot logged in as ${client.user.tag}`);
@@ -1267,8 +1489,8 @@ client.on('guildMemberAdd', async (member) => {
 // Track processed messages to prevent duplicates
 const processedMessages = new Set();
 
-// Staff role ID for group management commands
-const STAFF_ROLE_ID = '1386816989137211575';
+// Staff role ID for group management commands (run !setupserver to create)
+const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID || null;
 
 // Shutdown mode configuration
 const SHUTDOWN_CHANNEL_ID = '1466993014164422677'; // Channel users can see during shutdown
@@ -1283,6 +1505,48 @@ client.on('messageCreate', async (message) => {
     // Debug log for all messages
     if (message.guild) {
         console.log(`Message in server: "${message.content}" from ${message.author.tag}`);
+    }
+    
+    // ============ SERVER SETUP COMMAND (Owner only) ============
+    if (message.guild && message.content.toLowerCase() === '!setupserver') {
+        const member = message.member;
+        // Only allow server owner
+        if (message.guild.ownerId !== message.author.id) {
+            return message.reply('❌ Only the server owner can use this command.');
+        }
+        
+        const statusMsg = await message.reply('🚀 **Setting up server...** This may take a minute.\n\n*Creating roles and channels...*');
+        
+        try {
+            const results = await setupServer(message.guild);
+            
+            const embed = new EmbedBuilder()
+                .setTitle('🎉 Server Setup Complete!')
+                .setColor(0x2ecc71)
+                .setDescription('All channels and roles have been created!')
+                .addFields(
+                    { name: '📋 Important IDs', value: 
+                        `**Unverified Role:** \`${results.roles['⏳ Unverified'] || 'N/A'}\`\n` +
+                        `**Verified Role:** \`${results.roles['✅ Verified'] || 'N/A'}\`\n` +
+                        `**Moderator Role:** \`${results.roles['🛡️ Moderator'] || 'N/A'}\`\n` +
+                        `**Verify Channel:** \`${results.verifyChannelId || 'N/A'}\`\n` +
+                        `**Log Channel:** \`${results.logChannelId || 'N/A'}\``
+                    },
+                    { name: '⚠️ Next Steps', value: 
+                        '1. Update the role/channel IDs in your code\n' +
+                        '2. Set environment variables on Render\n' +
+                        '3. Restart the bot\n' +
+                        '4. Run `!postverify` in the verify channel'
+                    }
+                )
+                .setTimestamp();
+            
+            await statusMsg.edit({ content: null, embeds: [embed] });
+        } catch (error) {
+            console.error('Setup error:', error);
+            await statusMsg.edit(`❌ Setup failed: ${error.message}`);
+        }
+        return;
     }
     
     // Handle server commands (not DMs)
