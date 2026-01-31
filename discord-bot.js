@@ -56,11 +56,13 @@ const PING_ROLES_CHANNEL_ID = process.env.PING_ROLES_CHANNEL_ID || '146718431467
 // Ping roles configuration - add your role IDs here
 // Format: { id: 'ROLE_ID', label: 'Button Label', emoji: 'emoji', description: 'What this role is for' }
 const PING_ROLES = [
-    { id: process.env.PING_ROLE_ANNOUNCEMENTS || null, label: 'Announcements', emoji: '📢', description: 'Get pinged for server announcements' },
-    { id: process.env.PING_ROLE_EVENTS || null, label: 'Events', emoji: '🎉', description: 'Get pinged for events and giveaways' },
-    { id: process.env.PING_ROLE_UPDATES || null, label: 'Game Updates', emoji: '🎮', description: 'Get pinged for Roblox game updates' },
-    { id: process.env.PING_ROLE_GIVEAWAYS || null, label: 'Giveaways', emoji: '🎁', description: 'Get pinged for giveaways' },
-    { id: process.env.PING_ROLE_POLLS || null, label: 'Polls', emoji: '📊', description: 'Get pinged for polls and voting' },
+    { id: '1467184546918174937', label: 'Game Ping', emoji: '🎮', description: 'Get pinged for game sessions' },
+    { id: '1467184619748327485', label: 'Server Ping', emoji: '📢', description: 'Get pinged for server announcements' },
+    { id: '1467184650983051418', label: 'Giveaway Ping', emoji: '🎁', description: 'Get pinged for giveaways' },
+    { id: '1467184692347539664', label: 'Poll Ping', emoji: '📊', description: 'Get pinged for polls and voting' },
+    { id: '1467184731664941189', label: 'Sneaks Ping', emoji: '👀', description: 'Get pinged for sneak peeks' },
+    { id: '1467184771473084503', label: 'Looking Ping', emoji: '🔍', description: 'Get pinged when people are looking for others' },
+    { id: '1467184835687612476', label: 'Update Ping', emoji: '🆕', description: 'Get pinged for updates' },
 ].filter(role => role.id); // Only include roles that have IDs set
 
 // Gender roles configuration
