@@ -1067,7 +1067,7 @@ async function setupServer(guild) {
         {
             name: '📢 INFORMATION',
             channels: [
-                { name: '📜・rules', type: 0, topic: 'Server rules and guidelines' },
+                { name: '📜・rules', type: 0, topic: 'Server rules and guidelines', isRulesChannel: true },
                 { name: '📣・announcements', type: 0, topic: 'Important server announcements' },
                 { name: '🎉・giveaways', type: 0, topic: 'Server giveaways and events' },
                 { name: '📝・changelog', type: 0, topic: 'Updates and changes to the server' },
@@ -1197,6 +1197,9 @@ async function setupServer(guild) {
                         if (channelData.isLogChannel) {
                             results.logChannelId = channel.id;
                         }
+                        if (channelData.isRulesChannel) {
+                            results.rulesChannelId = channel.id;
+                        }
                     } else {
                         results.channels[channelData.name] = existingChannel.id;
                         if (channelData.isVerifyChannel) {
@@ -1204,6 +1207,9 @@ async function setupServer(guild) {
                         }
                         if (channelData.isLogChannel) {
                             results.logChannelId = existingChannel.id;
+                        }
+                        if (channelData.isRulesChannel) {
+                            results.rulesChannelId = existingChannel.id;
                         }
                         console.log(`  ⏭️ Channel exists: ${channelData.name}`);
                     }
@@ -1213,6 +1219,136 @@ async function setupServer(guild) {
             }
         } catch (err) {
             console.log(`❌ Failed to create category ${category.name}: ${err.message}`);
+        }
+    }
+    
+    // ========== POST RULES ==========
+    if (results.rulesChannelId) {
+        try {
+            const rulesChannel = await guild.channels.fetch(results.rulesChannelId);
+            
+            const rulesEmbed1 = new EmbedBuilder()
+                .setTitle('📜 Server Rules')
+                .setColor(0x5865F2)
+                .setDescription('Welcome to **Forest Park Hangout**! Please read and follow all rules to ensure a safe and enjoyable experience for everyone.')
+                .setImage('https://i.imgur.com/AfFp7pu.png'); // Banner placeholder
+            
+            const rulesEmbed2 = new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setTitle('🔞 Age & Content Rules')
+                .addFields(
+                    { name: '1️⃣ Must be 18+', value: 'You must be **18 years or older** to be in this server. No exceptions. Lying about your age will result in an immediate ban.' },
+                    { name: '2️⃣ NSFW Content', value: 'Keep NSFW content in designated channels only. No illegal content of any kind.' },
+                    { name: '3️⃣ No Minors in NSFW', value: 'Never post, share, or request any content involving minors. Immediate permanent ban.' }
+                );
+            
+            const rulesEmbed3 = new EmbedBuilder()
+                .setColor(0x57F287)
+                .setTitle('💬 Chat & Behavior Rules')
+                .addFields(
+                    { name: '4️⃣ Be Respectful', value: 'Treat all members with respect. No harassment, bullying, discrimination, or hate speech.' },
+                    { name: '5️⃣ No Spam', value: 'No spamming, excessive caps, or flooding channels. This includes emojis, stickers, and repeated messages.' },
+                    { name: '6️⃣ English Only', value: 'Please communicate in English in public channels so moderators can ensure safety.' },
+                    { name: '7️⃣ No Drama', value: 'Keep personal drama out of public channels. Use DMs or contact staff if there\'s an issue.' }
+                );
+            
+            const rulesEmbed4 = new EmbedBuilder()
+                .setColor(0xFEE75C)
+                .setTitle('🔒 Safety & Privacy Rules')
+                .addFields(
+                    { name: '8️⃣ No Doxxing', value: 'Never share personal information about yourself or others (real names, addresses, phone numbers, etc.).' },
+                    { name: '9️⃣ No Unsolicited DMs', value: 'Do not DM members without permission, especially for NSFW content or solicitation.' },
+                    { name: '🔟 Report Issues', value: 'If you see rule-breaking behavior, report it to staff. Do not engage or escalate.' }
+                );
+            
+            const rulesEmbed5 = new EmbedBuilder()
+                .setColor(0xED4245)
+                .setTitle('🎮 Roblox & Game Rules')
+                .addFields(
+                    { name: '1️⃣1️⃣ Roblox Verification', value: 'You must verify your Roblox account to access game-related channels and features.' },
+                    { name: '1️⃣2️⃣ No Exploiting', value: 'Do not use exploits, hacks, or cheats in Forest Park Hangout. This will result in a game ban.' },
+                    { name: '1️⃣3️⃣ In-Game Behavior', value: 'Follow the same respect rules in-game. Harassment in Roblox = punishment in Discord.' }
+                );
+            
+            const rulesEmbed6 = new EmbedBuilder()
+                .setColor(0xEB459E)
+                .setTitle('⚖️ Moderation & Enforcement')
+                .addFields(
+                    { name: '1️⃣4️⃣ Staff Decisions', value: 'Staff decisions are final. If you disagree, appeal through proper channels, not public arguments.' },
+                    { name: '1️⃣5️⃣ Loopholes', value: 'Attempting to find loopholes in rules will be treated the same as breaking them.' },
+                    { name: '1️⃣6️⃣ Alt Accounts', value: 'Using alt accounts to evade bans or punishments will result in all accounts being permanently banned.' }
+                )
+                .setFooter({ text: '⚠️ Breaking rules may result in warnings, mutes, kicks, or bans depending on severity.' });
+            
+            const rulesEmbed7 = new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setTitle('✅ Agreement')
+                .setDescription('By participating in this server, you agree to follow all rules above.\n\n**Last Updated:** January 2026')
+                .setTimestamp();
+            
+            await rulesChannel.send({ embeds: [rulesEmbed1, rulesEmbed2, rulesEmbed3, rulesEmbed4, rulesEmbed5, rulesEmbed6, rulesEmbed7] });
+            console.log('✅ Posted rules to rules channel');
+        } catch (err) {
+            console.log(`❌ Failed to post rules: ${err.message}`);
+        }
+    }
+    
+    // ========== POST VERIFICATION INSTRUCTIONS ==========
+    if (results.verifyChannelId) {
+        try {
+            const verifyChannel = await guild.channels.fetch(results.verifyChannelId);
+            
+            const verifyEmbed1 = new EmbedBuilder()
+                .setTitle('🔐 How to Get Verified')
+                .setColor(0x00D4FF)
+                .setDescription('Welcome to **Forest Park Hangout**! To access the full server, you need to complete our verification process.')
+                .setThumbnail(guild.iconURL({ dynamic: true }));
+            
+            const verifyEmbed2 = new EmbedBuilder()
+                .setColor(0x00D4FF)
+                .setTitle('📋 Verification Steps')
+                .setDescription(
+                    '**Step 1:** Click the **"Start 18+ Verification"** button below\n\n' +
+                    '**Step 2:** The bot will DM you with verification questions\n\n' +
+                    '**Step 3:** Answer all 16 questions honestly\n\n' +
+                    '**Step 4:** Link your Roblox account when prompted\n\n' +
+                    '**Step 5:** Wait for staff to review your application\n\n' +
+                    '*The review process usually takes 1-24 hours*'
+                );
+            
+            const verifyEmbed3 = new EmbedBuilder()
+                .setColor(0xFEE75C)
+                .setTitle('⚠️ Important Notes')
+                .addFields(
+                    { name: '🔞 Age Requirement', value: 'You must be **18 or older** to join this server. We will verify your age.', inline: false },
+                    { name: '📩 Enable DMs', value: 'Make sure your DMs are open so the bot can message you!', inline: false },
+                    { name: '⏰ Take Your Time', value: 'Answer questions thoughtfully. Rushed or suspicious answers may be denied.', inline: false },
+                    { name: '🚫 No Lying', value: 'False information will result in a permanent ban.', inline: false }
+                );
+            
+            const verifyEmbed4 = new EmbedBuilder()
+                .setColor(0x57F287)
+                .setTitle('✨ Ready to Verify?')
+                .setDescription('Click the button below to start your verification!\n\nIf you have any issues, contact a staff member.')
+                .setFooter({ text: 'Forest Park Hangout • Verification System' })
+                .setTimestamp();
+            
+            const verifyButton = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('start_dm_verification')
+                        .setLabel('🔐 Start 18+ Verification')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId('contact_staff_verify')
+                        .setLabel('📩 Contact Staff')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+            
+            await verifyChannel.send({ embeds: [verifyEmbed1, verifyEmbed2, verifyEmbed3, verifyEmbed4], components: [verifyButton] });
+            console.log('✅ Posted verification instructions to verify channel');
+        } catch (err) {
+            console.log(`❌ Failed to post verification instructions: ${err.message}`);
         }
     }
     
