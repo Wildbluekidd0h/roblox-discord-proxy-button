@@ -91,6 +91,14 @@ const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE || null; // .ROBLOSECURITY cooki
 // Store pending manual verifications
 const pendingManualVerifications = new Map();
 
+// ==================== PLAYER LIST TRACKING ====================
+// Store current active players in the game
+const activePlayers = new Map(); // Maps Roblox User ID to player info { name, displayName, joinedAt, characterName }
+let playerListMessageId = null; // Message ID of the player list in Discord
+let lastPlayerListUpdate = 0; // Timestamp of last update
+const PLAYER_LIST_CHANNEL_ID = process.env.PLAYER_LIST_CHANNEL_ID || null; // Channel where player list is displayed
+const PLAYER_LIST_UPDATE_INTERVAL = 30000; // Update Discord every 30 seconds if changes detected
+
 // DM Verification Questions
 const VERIFICATION_QUESTIONS = [
     { key: 'birthdate', question: '**Question 1/16:** What is your birthdate? (MM/DD/YYYY or DD/MM/YYYY)\n*We use this to confirm your age. You must be 18 or older to join this community.*' },
@@ -5285,6 +5293,138 @@ app.get('/check-roblox-verified/:robloxUserId', (req, res) => {
         res.json({ verified: false, error: error.message });
     }
 });
+
+// ==================== PLAYER LIST TRACKING ====================
+
+// Update player list from Roblox game
+app.post('/api/update-player-list', async (req, res) => {
+    try {
+        const { players } = req.body; // Array of {userId, name, displayName, characterName, joinedAt}
+        
+        if (!Array.isArray(players)) {
+            return res.json({ success: false, error: 'Players must be an array' });
+        }
+        
+        // Update active players
+        activePlayers.clear();
+        for (const player of players) {
+            if (player.userId) {
+                activePlayers.set(String(player.userId), {
+                    userId: player.userId,
+                    name: player.name,
+                    displayName: player.displayName || player.name,
+                    characterName: player.characterName,
+                    joinedAt: player.joinedAt || new Date().toISOString()
+                });
+            }
+        }
+        
+        console.log(`✓ Updated player list: ${players.length} players`);
+        
+        // Schedule Discord update (with debouncing to avoid spam)
+        if (Date.now() - lastPlayerListUpdate > PLAYER_LIST_UPDATE_INTERVAL) {
+            updatePlayerListInDiscord();
+            lastPlayerListUpdate = Date.now();
+        }
+        
+        res.json({ success: true, message: `Received ${players.length} players` });
+        
+    } catch (error) {
+        console.error('Error updating player list:', error.message);
+        res.json({ success: false, error: error.message });
+    }
+});
+
+// Get current player list
+app.get('/api/get-player-list', (req, res) => {
+    try {
+        const players = Array.from(activePlayers.values());
+        res.json({
+            success: true,
+            count: players.length,
+            players,
+            lastUpdate: new Date(lastPlayerListUpdate).toISOString()
+        });
+    } catch (error) {
+        res.json({ success: false, error: error.message });
+    }
+});
+
+// Function to update Discord with current player list
+async function updatePlayerListInDiscord() {
+    if (!PLAYER_LIST_CHANNEL_ID || !client.user) {
+        return; // Not configured or bot not ready
+    }
+    
+    try {
+        const channel = await client.channels.fetch(PLAYER_LIST_CHANNEL_ID);
+        if (!channel) return;
+        
+        const playersList = Array.from(activePlayers.values());
+        const playerCount = playersList.length;
+        
+        // Create embed
+        const embed = new EmbedBuilder()
+            .setTitle('🎮 Players in Forest Park Hangout')
+            .setColor(playerCount > 0 ? 0x2ecc71 : 0x95a5a6)
+            .setTimestamp();
+        
+        if (playerCount === 0) {
+            embed.setDescription('🌲 No players currently in the game.\n\nJoin now on Roblox!')
+                .addFields({
+                    name: '👥 Players Online', 
+                    value: '0'
+                });
+        } else {
+            // Build player list
+            let playerListText = '';
+            let playerMentions = '';
+            
+            for (const player of playersList) {
+                const discordId = robloxToDiscord.get(String(player.userId));
+                const mention = discordId ? ` <@${discordId}>` : '';
+                const line = `• ${player.displayName || player.name}${mention}\n`;
+                
+                if (playerListText.length + line.length > 1024) {
+                    break; // Truncate if too long
+                }
+                playerListText += line;
+            }
+            
+            embed.setDescription(`**${playerCount} Player${playerCount === 1 ? '' : 's'} Online**\n\n${playerListText.trim()}`)
+                .addFields({
+                    name: '👥 Players Online',
+                    value: String(playerCount),
+                    inline: true
+                },
+                {
+                    name: '⏰ Last Updated',
+                    value: `<t:${Math.floor(Date.now() / 1000)}:T>`,
+                    inline: true
+                });
+        }
+        
+        // Find and update or create message
+        const messages = await channel.messages.fetch({ limit: 10 });
+        const existingMessage = messages.find(m => 
+            m.author.id === client.user.id && 
+            m.embeds.length > 0 &&
+            m.embeds[0].title?.includes('Players in Forest Park')
+        );
+        
+        if (existingMessage) {
+            await existingMessage.edit({ embeds: [embed] });
+            console.log(`✓ Updated player list message: ${playerCount} players`);
+        } else {
+            const sentMessage = await channel.send({ embeds: [embed] });
+            playerListMessageId = sentMessage.id;
+            console.log(`✓ Posted new player list message: ${playerCount} players`);
+        }
+        
+    } catch (error) {
+        console.error('Error updating player list in Discord:', error.message);
+    }
+}
 
 // Start Express server
 app.listen(PORT, () => {
