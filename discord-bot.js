@@ -63,6 +63,7 @@ const PING_ROLES = [
     { id: '1467184731664941189', label: 'Sneaks Ping', emoji: '👀', description: 'Get pinged for sneak peeks' },
     { id: '1467184771473084503', label: 'Looking Ping', emoji: '🔍', description: 'Get pinged when people are looking for others' },
     { id: '1467184835687612476', label: 'Update Ping', emoji: '🆕', description: 'Get pinged for updates' },
+    { id: '1470208003167752212', label: 'Build Ping', emoji: '🔨', description: 'Get pinged for building updates' },
 ].filter(role => role.id); // Only include roles that have IDs set
 
 // Gender roles configuration - will be auto-created if they don't exist
