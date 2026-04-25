@@ -63,7 +63,7 @@ const HOW_TO_VERIFY_CHANNEL_ID = process.env.HOW_TO_VERIFY_CHANNEL_ID || null;
 const IN_GAME_VERIFICATION_LOG_CHANNEL_ID = process.env.IN_GAME_VERIFICATION_LOG_CHANNEL_ID || '1467045351969128530';
 
 // Moderation logs channel - logs all moderation events
-const MOD_LOG_CHANNEL_ID = process.env.MOD_LOG_CHANNEL_ID || '1467019082409840672';
+const MOD_LOG_CHANNEL_ID = process.env.MOD_LOG_CHANNEL_ID || '1467019084574097627';
 
 // Ping roles channel - where users can get notification roles
 const PING_ROLES_CHANNEL_ID = process.env.PING_ROLES_CHANNEL_ID || '1467184314675494996';
