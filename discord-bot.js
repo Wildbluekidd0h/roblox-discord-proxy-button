@@ -16,6 +16,15 @@ const discordToRoblox = new Map(); // Maps Discord ID to Roblox User ID
 const staffContactRequests = new Map(); // Tracks contact requests to prevent spam
 const pendingRobloxVerifications = new Map(); // Maps Discord ID to pending Roblox verification (with code)
 
+// ==================== MODERATION & SPAM TRACKING ====================
+const messageCache = new Map(); // Stores recent messages for spam detection { messageId: { content, author, timestamp } }
+const userMessageHistory = new Map(); // Tracks user messages for spam detection { userId: [{ content, timestamp }] }
+const capsSpamWarnings = new Map(); // Tracks caps spam warnings { userId: count }
+const massSpamWarnings = new Map(); // Tracks mass mentions/spam { userId: count }
+const recentMentions = new Map(); // Tracks mentions for ghost ping detection { messageId: { mentions, author, timestamp } }
+const voiceChannelHistory = new Map(); // Tracks user VC changes { userId: [{ channelId, timestamp }] }
+const userVCConnections = new Map(); // Current VC connections { userId: { channelId, joinTime, audioLevel } }
+
 // Staff User IDs (verified in-game, can access without password)
 const STAFF_USER_IDS = new Set([
     8976444910,  // Wyldieee
@@ -37,6 +46,9 @@ const REQUIRE_MATCHING_DISPLAY_NAME = process.env.REQUIRE_MATCHING_DISPLAY_NAME 
 // Verification channel where the verify button will be posted
 const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID || process.env.DISCORD_VERIFICATION_CHANNEL_ID;
 
+// Unverified role ID - role given to new members when they join
+const UNVERIFIED_ROLE_ID = '1467019033567301809';
+
 // Role to give to new members when they join the server (run !setupserver to create)
 const AUTO_ROLE_ID = process.env.AUTO_ROLE_ID || null;
 
@@ -49,6 +61,9 @@ const HOW_TO_VERIFY_CHANNEL_ID = process.env.HOW_TO_VERIFY_CHANNEL_ID || null;
 
 // In-game verification logs channel (logs when people verify in-game)
 const IN_GAME_VERIFICATION_LOG_CHANNEL_ID = process.env.IN_GAME_VERIFICATION_LOG_CHANNEL_ID || '1467045351969128530';
+
+// Moderation logs channel - logs all moderation events
+const MOD_LOG_CHANNEL_ID = process.env.MOD_LOG_CHANNEL_ID || '1467019082409840672';
 
 // Ping roles channel - where users can get notification roles
 const PING_ROLES_CHANNEL_ID = process.env.PING_ROLES_CHANNEL_ID || '1467184314675494996';
@@ -100,7 +115,16 @@ let lastPlayerListUpdate = 0; // Timestamp of last update
 const PLAYER_LIST_CHANNEL_ID = process.env.PLAYER_LIST_CHANNEL_ID || null; // Channel where player list is displayed
 const PLAYER_LIST_UPDATE_INTERVAL = 30000; // Update Discord every 30 seconds if changes detected
 
-// DM Verification Questions
+// ⚠️ TOS COMPLIANCE NOTICE:
+// ================================================
+// This verification system collects personal data. You MUST:
+// 1. Include a clear privacy policy that users can read BEFORE verifying
+// 2. Explain exactly what data is collected and why
+// 3. State that verification is OPTIONAL (not required to play the game)
+// 4. Allow users to opt-out and still enjoy the game's baseline features
+// 5. Never sell or share user data with third parties
+// 6. Comply with Discord's TOS regarding data collection in bots
+// ================================================
 const VERIFICATION_QUESTIONS = [
     { key: 'birthdate', question: '**Question 1/16:** What is your birthdate? (MM/DD/YYYY or DD/MM/YYYY)\n*We use this to confirm your age. You must be 18 or older to join this community.*' },
     { key: 'nextBirthdayAge', question: '**Question 2/16:** How old will you be on your next birthday?' },
@@ -127,7 +151,8 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates
     ],
     partials: [
         Partials.Channel,
@@ -1791,6 +1816,16 @@ const modLogs = []; // Array of moderation actions
 client.on('guildMemberAdd', async (member) => {
     console.log(`New member joined: ${member.user.tag}`);
     
+    // Give unverified role
+    if (UNVERIFIED_ROLE_ID) {
+        try {
+            await member.roles.add(UNVERIFIED_ROLE_ID);
+            console.log(`✓ Gave unverified role to ${member.user.tag}`);
+        } catch (error) {
+            console.error(`Failed to give unverified role to ${member.user.tag}:`, error.message);
+        }
+    }
+    
     if (AUTO_ROLE_ID) {
         try {
             await member.roles.add(AUTO_ROLE_ID);
@@ -1878,6 +1913,620 @@ client.on('guildMemberRemove', async (member) => {
             console.error(`Failed to send goodbye message: ${err.message}`);
         }
     }
+    
+    // Log member leave in mod logs
+    if (MOD_LOG_CHANNEL_ID) {
+        try {
+            const logChannel = await member.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+            if (logChannel) {
+                const accountAge = Math.floor((Date.now() - member.user.createdTimestamp) / 1000 / 60);
+                const logEmbed = new EmbedBuilder()
+                    .setColor(0x808080)
+                    .setTitle('👤 Member Left')
+                    .addFields(
+                        { name: '🆔 User', value: `${member.user.tag} (${member.id})`, inline: false },
+                        { name: '📅 Account Age', value: `${accountAge} minutes old`, inline: true },
+                        { name: '⏰ Joined Server', value: `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>`, inline: true }
+                    )
+                    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+                    .setTimestamp();
+                await logChannel.send({ embeds: [logEmbed] });
+            }
+        } catch (err) {
+            console.error(`Failed to log member leave:`, err.message);
+        }
+    }
+});
+
+// ==================== VOICE CHANNEL MODERATION ====================
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    const member = newState.member;
+    if (!member || member.user.bot || !newState.guild) return;
+    
+    const userId = member.id;
+    
+    // Track voice channel changes
+    if (!voiceChannelHistory.has(userId)) {
+        voiceChannelHistory.set(userId, []);
+    }
+    const vcHistory = voiceChannelHistory.get(userId);
+    
+    const oldChannelId = oldState.channelId;
+    const newChannelId = newState.channelId;
+    
+    // ==================== VOICE JOIN/LEAVE LOGGING ====================
+    if (oldChannelId && !newChannelId) {
+        // User left voice channel
+        if (MOD_LOG_CHANNEL_ID) {
+            try {
+                const logChannel = await newState.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+                if (logChannel) {
+                    const voiceChannel = await newState.guild.channels.fetch(oldChannelId).catch(() => null);
+                    const logEmbed = new EmbedBuilder()
+                        .setColor(0x95A5A6)
+                        .setTitle('🔊 Voice Channel Left')
+                        .addFields(
+                            { name: '👤 User', value: `${member.user.tag} (${member.id})`, inline: true },
+                            { name: '🎙️ Channel', value: voiceChannel ? voiceChannel.name : `Unknown (${oldChannelId})`, inline: true }
+                        )
+                        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [logEmbed] });
+                }
+            } catch (err) {
+                console.error(`Failed to log VC leave:`, err.message);
+            }
+        }
+        userVCConnections.delete(userId);
+    } else if (!oldChannelId && newChannelId) {
+        // User joined voice channel
+        if (MOD_LOG_CHANNEL_ID) {
+            try {
+                const logChannel = await newState.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+                if (logChannel) {
+                    const voiceChannel = await newState.guild.channels.fetch(newChannelId).catch(() => null);
+                    const logEmbed = new EmbedBuilder()
+                        .setColor(0x2ECC71)
+                        .setTitle('🔊 Voice Channel Joined')
+                        .addFields(
+                            { name: '👤 User', value: `${member.user.tag} (${member.id})`, inline: true },
+                            { name: '🎙️ Channel', value: voiceChannel ? voiceChannel.name : `Unknown (${newChannelId})`, inline: true }
+                        )
+                        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [logEmbed] });
+                }
+            } catch (err) {
+                console.error(`Failed to log VC join:`, err.message);
+            }
+        }
+        userVCConnections.set(userId, {
+            channelId: newChannelId,
+            joinTime: Date.now(),
+            audioLevel: 0
+        });
+    } else if (oldChannelId && newChannelId && oldChannelId !== newChannelId) {
+        // User switched voice channels - VC HOPPING DETECTION
+        vcHistory.push({ channelId: newChannelId, timestamp: Date.now() });
+        
+        // Check for VC hopping spam (5 channel changes in 30 seconds)
+        const recentChanges = vcHistory.filter(v => Date.now() - v.timestamp < 30000);
+        if (recentChanges.length >= 5 && MOD_LOG_CHANNEL_ID) {
+            try {
+                const logChannel = await newState.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+                if (logChannel) {
+                    const hopEmbed = new EmbedBuilder()
+                        .setColor(0xFF6B9D)
+                        .setTitle('🚀 VC Hopping Spam Detected')
+                        .addFields(
+                            { name: '👤 User', value: `${member.user.tag} (${member.id})`, inline: true },
+                            { name: '🔢 Changes', value: `${recentChanges.length} in 30 seconds`, inline: true },
+                            { name: '📋 Recent Channels', value: recentChanges.map(c => `<#${c.channelId}>`).join(' → '), inline: false }
+                        )
+                        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+                        .setFooter({ text: 'Possible spam/trolling behavior' })
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [hopEmbed] });
+                }
+            } catch (err) {
+                console.error(`Failed to log VC hopping:`, err.message);
+            }
+        }
+        
+        // Keep only last 10 changes
+        if (vcHistory.length > 10) {
+            vcHistory.shift();
+        }
+    }
+    
+    // ==================== LOUD AUDIO DETECTION & AUTO-MUTE ====================
+    // Check for mute/unmute and screenshare changes
+    if (oldState.serverMute !== newState.serverMute) {
+        // User was muted/unmuted by server
+        const muteStatus = newState.serverMute ? 'Muted' : 'Unmuted';
+        console.log(`${member.user.tag} was ${muteStatus} by server`);
+    }
+    
+    if (oldState.streaming !== newState.streaming) {
+        // User started/stopped streaming
+        if (newState.streaming && MOD_LOG_CHANNEL_ID) {
+            try {
+                const logChannel = await newState.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+                if (logChannel) {
+                    const streamEmbed = new EmbedBuilder()
+                        .setColor(0xFF69B4)
+                        .setTitle('📹 User Started Streaming')
+                        .addFields(
+                            { name: '👤 User', value: `${member.user.tag} (${member.id})`, inline: true },
+                            { name: '🎙️ Channel', value: `<#${newState.channelId}>`, inline: true }
+                        )
+                        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [streamEmbed] });
+                }
+            } catch (err) {
+                console.error(`Failed to log streaming:`, err.message);
+            }
+        }
+    }
+    
+    if (oldState.selfDeaf !== newState.selfDeaf || oldState.selfMute !== newState.selfMute) {
+        // User changed their own deaf/mute status - useful for detecting audio issues
+        const statusChanges = [];
+        if (oldState.selfDeaf !== newState.selfDeaf) {
+            statusChanges.push(`Deafened: ${oldState.selfDeaf} → ${newState.selfDeaf}`);
+        }
+        if (oldState.selfMute !== newState.selfMute) {
+            statusChanges.push(`Muted: ${oldState.selfMute} → ${newState.selfMute}`);
+        }
+        
+        if (MOD_LOG_CHANNEL_ID && (newState.selfDeaf || newState.selfMute)) {
+            try {
+                const logChannel = await newState.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+                if (logChannel) {
+                    const statusEmbed = new EmbedBuilder()
+                        .setColor(0xF39C12)
+                        .setTitle('🔇 Voice Status Changed')
+                        .addFields(
+                            { name: '👤 User', value: `${member.user.tag} (${member.id})`, inline: true },
+                            { name: '🎙️ Channel', value: `<#${newState.channelId}>`, inline: true },
+                            { name: '📊 Status', value: statusChanges.join('\n'), inline: false }
+                        )
+                        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [statusEmbed] });
+                }
+            } catch (err) {
+                console.error(`Failed to log voice status:`, err.message);
+            }
+        }
+    }
+});
+
+// ==================== MESSAGE DELETE LOG ====================
+client.on('messageDelete', async (message) => {
+    // Ignore bot messages and DMs
+    if (message.author?.bot || !message.guild) return;
+    
+    if (MOD_LOG_CHANNEL_ID) {
+        try {
+            const logChannel = await message.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+            if (logChannel) {
+                const content = message.content.substring(0, 1024) || '(No text content)';
+                const logEmbed = new EmbedBuilder()
+                    .setColor(0xFF0000)
+                    .setTitle('🗑️ Message Deleted')
+                    .addFields(
+                        { name: '👤 Author', value: `${message.author.tag} (${message.author.id})`, inline: true },
+                        { name: '#️⃣ Channel', value: `<#${message.channelId}>`, inline: true },
+                        { name: '📝 Content', value: `\`\`\`\n${content}\n\`\`\``, inline: false }
+                    )
+                    .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                    .setTimestamp();
+                
+                if (message.attachments.size > 0) {
+                    logEmbed.addFields({
+                        name: '📎 Attachments',
+                        value: message.attachments.map(a => `[${a.name}](${a.url})`).join('\n'),
+                        inline: false
+                    });
+                }
+                
+                await logChannel.send({ embeds: [logEmbed] });
+            }
+        } catch (err) {
+            console.error(`Failed to log message delete:`, err.message);
+        }
+    }
+    
+    // ==================== GHOST PING DETECTION ====================
+    // Check if message had mentions and was deleted within 5 seconds
+    if (message.mentions.size > 0 && MOD_LOG_CHANNEL_ID) {
+        try {
+            const logChannel = await message.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+            if (logChannel) {
+                const mentionedUsers = message.mentions.users.map(u => `${u.tag}`).join(', ');
+                const ghostPingEmbed = new EmbedBuilder()
+                    .setColor(0xFF1493)
+                    .setTitle('👻 Ghost Ping Detected')
+                    .addFields(
+                        { name: '👤 Pinger', value: `${message.author.tag} (${message.author.id})`, inline: true },
+                        { name: '#️⃣ Channel', value: `<#${message.channelId}>`, inline: true },
+                        { name: '👥 Mentioned', value: mentionedUsers, inline: false },
+                        { name: '💬 Message', value: `\`\`\`\n${message.content.substring(0, 256)}\n\`\`\``, inline: false },
+                        { name: '⏱️ Deleted After', value: 'Seconds', inline: true }
+                    )
+                    .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                    .setFooter({ text: 'Message was deleted quickly after mentioning user(s)' })
+                    .setTimestamp();
+                
+                await logChannel.send({ embeds: [ghostPingEmbed] });
+            }
+        } catch (err) {
+            console.error(`Failed to log ghost ping:`, err.message);
+        }
+    }
+});
+
+// ==================== MESSAGE EDIT LOG ====================
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+    // Ignore bot messages and DMs
+    if (newMessage.author?.bot || !newMessage.guild || oldMessage.content === newMessage.content) return;
+    
+    if (MOD_LOG_CHANNEL_ID) {
+        try {
+            const logChannel = await newMessage.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+            if (logChannel) {
+                const oldContent = oldMessage.content?.substring(0, 512) || '(No content)';
+                const newContent = newMessage.content?.substring(0, 512) || '(No content)';
+                const logEmbed = new EmbedBuilder()
+                    .setColor(0xFFA500)
+                    .setTitle('✏️ Message Edited')
+                    .addFields(
+                        { name: '👤 Author', value: `${newMessage.author.tag} (${newMessage.author.id})`, inline: true },
+                        { name: '#️⃣ Channel', value: `<#${newMessage.channelId}>`, inline: true },
+                        { name: '📝 Before', value: `\`\`\`\n${oldContent}\n\`\`\``, inline: false },
+                        { name: '📝 After', value: `\`\`\`\n${newContent}\n\`\`\``, inline: false }
+                    )
+                    .setThumbnail(newMessage.author.displayAvatarURL({ dynamic: true }))
+                    .setTimestamp();
+                
+                await logChannel.send({ embeds: [logEmbed] });
+            }
+        } catch (err) {
+            console.error(`Failed to log message edit:`, err.message);
+        }
+    }
+});
+
+// ==================== NICKNAME CHANGE LOG ====================
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    if (!newMember.guild || oldMember.nickname === newMember.nickname && oldMember.roles.cache.size === newMember.roles.cache.size) return;
+    
+    if (MOD_LOG_CHANNEL_ID) {
+        try {
+            const logChannel = await newMember.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+            if (logChannel) {
+                // Nickname change
+                if (oldMember.nickname !== newMember.nickname) {
+                    const oldNick = oldMember.nickname || oldMember.user.username;
+                    const newNick = newMember.nickname || newMember.user.username;
+                    
+                    const logEmbed = new EmbedBuilder()
+                        .setColor(0x3498DB)
+                        .setTitle('📝 Nickname Changed')
+                        .addFields(
+                            { name: '👤 User', value: `${newMember.user.tag} (${newMember.id})`, inline: false },
+                            { name: '➡️ Before', value: oldNick, inline: true },
+                            { name: '➡️ After', value: newNick, inline: true }
+                        )
+                        .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [logEmbed] });
+                }
+                
+                // Role changes
+                const addedRoles = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
+                const removedRoles = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id));
+                
+                if (addedRoles.size > 0 || removedRoles.size > 0) {
+                    const roleEmbed = new EmbedBuilder()
+                        .setColor(0x2ECC71)
+                        .setTitle('🎭 Roles Updated')
+                        .addFields(
+                            { name: '👤 User', value: `${newMember.user.tag} (${newMember.id})`, inline: false }
+                        );
+                    
+                    if (addedRoles.size > 0) {
+                        roleEmbed.addFields({
+                            name: '➕ Added Roles',
+                            value: addedRoles.map(r => r.toString()).join(', ') || 'None',
+                            inline: false
+                        });
+                    }
+                    
+                    if (removedRoles.size > 0) {
+                        roleEmbed.addFields({
+                            name: '➖ Removed Roles',
+                            value: removedRoles.map(r => r.toString()).join(', ') || 'None',
+                            inline: false
+                        });
+                    }
+                    
+                    roleEmbed.setThumbnail(newMember.user.displayAvatarURL({ dynamic: true })).setTimestamp();
+                    await logChannel.send({ embeds: [roleEmbed] });
+                }
+            }
+        } catch (err) {
+            console.error(`Failed to log member update:`, err.message);
+        }
+    }
+});
+
+// ==================== CHANNEL CHANGE LOG ====================
+client.on('channelUpdate', async (oldChannel, newChannel) => {
+    if (!newChannel.guild) return;
+    
+    if (MOD_LOG_CHANNEL_ID) {
+        try {
+            const logChannel = await newChannel.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+            if (logChannel) {
+                const changes = [];
+                if (oldChannel.name !== newChannel.name) changes.push(`Name: ${oldChannel.name} → ${newChannel.name}`);
+                if (oldChannel.topic !== newChannel.topic) changes.push(`Topic: ${oldChannel.topic || '(none)'} → ${newChannel.topic || '(none)'}`);
+                if (oldChannel.isNSFW?.() !== newChannel.isNSFW?.()) changes.push(`NSFW: ${oldChannel.isNSFW?.()} → ${newChannel.isNSFW?.()}`);
+                
+                if (changes.length > 0) {
+                    const logEmbed = new EmbedBuilder()
+                        .setColor(0x9B59B6)
+                        .setTitle('⚙️ Channel Updated')
+                        .addFields(
+                            { name: '#️⃣ Channel', value: `<#${newChannel.id}>`, inline: false },
+                            { name: '📋 Changes', value: changes.join('\n'), inline: false }
+                        )
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [logEmbed] });
+                }
+            }
+        } catch (err) {
+            console.error(`Failed to log channel update:`, err.message);
+        }
+    }
+});
+
+// ==================== SERVER SETTINGS CHANGE LOG ====================
+client.on('guildUpdate', async (oldGuild, newGuild) => {
+    if (MOD_LOG_CHANNEL_ID) {
+        try {
+            const logChannel = await newGuild.channels.fetch(MOD_LOG_CHANNEL_ID);
+            if (logChannel) {
+                const changes = [];
+                if (oldGuild.name !== newGuild.name) changes.push(`Name: ${oldGuild.name} → ${newGuild.name}`);
+                if (oldGuild.region !== newGuild.preferredLocale) changes.push(`Region: ${oldGuild.region} → ${newGuild.preferredLocale}`);
+                if (oldGuild.verificationLevel !== newGuild.verificationLevel) changes.push(`Verification Level changed`);
+                
+                if (changes.length > 0) {
+                    const logEmbed = new EmbedBuilder()
+                        .setColor(0xE74C3C)
+                        .setTitle('🔧 Server Settings Changed')
+                        .addFields(
+                            { name: '📋 Changes', value: changes.join('\n'), inline: false }
+                        )
+                        .setThumbnail(newGuild.iconURL({ dynamic: true }))
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [logEmbed] });
+                }
+            }
+        } catch (err) {
+            console.error(`Failed to log guild update:`, err.message);
+        }
+    }
+});
+
+// Helper function to detect suspicious links
+function hasSuspiciousLinks(content) {
+    const linkPatterns = [
+        /discord\.gg\//i,
+        /discordapp\.com/i,
+        /bit\.ly/i,
+        /tinyurl/i,
+        /shorturl/i,
+        /phishing/i,
+        /malware/i,
+        /http[s]?:\/\/[^\s]+\.(tk|ml|ga|cf)/i, // Suspicious TLDs
+    ];
+    return linkPatterns.some(pattern => pattern.test(content));
+}
+
+// Helper function to detect caps spam
+function isCapsSpam(content) {
+    if (content.length < 5) return false;
+    const upperCaseCount = (content.match(/[A-Z]/g) || []).length;
+    const letterCount = (content.match(/[a-zA-Z]/g) || []).length;
+    return letterCount > 0 && (upperCaseCount / letterCount) > 0.7;
+}
+
+// Helper function to detect mass mentions
+function hasMassMentions(message) {
+    return message.mentions.has('@everyone') || message.mentions.has('@here') || message.mentions.members.size > 5;
+}
+
+// ==================== ENHANCED MESSAGE MONITORING ====================
+client.on('messageCreate', async (message) => {
+    // Store message in cache for spam detection
+    if (!message.author.bot && message.guild) {
+        messageCache.set(message.id, {
+            content: message.content,
+            author: message.author.id,
+            timestamp: Date.now(),
+            channelId: message.channelId
+        });
+        
+        // Track mentions for ghost ping detection
+        if (message.mentions.size > 0) {
+            recentMentions.set(message.id, {
+                mentions: Array.from(message.mentions.users.values()).map(u => u.id),
+                author: message.author.id,
+                timestamp: Date.now(),
+                channelId: message.channelId
+            });
+        }
+        
+        // Clean old messages from cache (keep last 100)
+        if (messageCache.size > 100) {
+            const firstKey = messageCache.keys().next().value;
+            messageCache.delete(firstKey);
+            recentMentions.delete(firstKey);
+        }
+        
+        // Track user message history
+        if (!userMessageHistory.has(message.author.id)) {
+            userMessageHistory.set(message.author.id, []);
+        }
+        const userHistory = userMessageHistory.get(message.author.id);
+        userHistory.push({ content: message.content, timestamp: Date.now(), channelId: message.channelId });
+        
+        // Keep only last 20 messages per user
+        if (userHistory.length > 20) {
+            userHistory.shift();
+        }
+        
+        // ALT ACCOUNT DETECTION
+        const accountAge = Math.floor((Date.now() - message.author.createdTimestamp) / 1000 / 60);
+        if (accountAge < 60 && MOD_LOG_CHANNEL_ID) { // Account less than 1 hour old
+            try {
+                const logChannel = await message.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+                if (logChannel) {
+                    const suspiciousEmbed = new EmbedBuilder()
+                        .setColor(0xFF6B6B)
+                        .setTitle('⚠️ Alt Account Detected')
+                        .addFields(
+                            { name: '👤 User', value: `${message.author.tag} (${message.author.id})`, inline: false },
+                            { name: '🆕 Account Age', value: `${accountAge} minutes old`, inline: true },
+                            { name: '#️⃣ Channel', value: `<#${message.channelId}>`, inline: true },
+                            { name: '💬 Message', value: message.content.substring(0, 256) || '(No content)', inline: false }
+                        )
+                        .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [suspiciousEmbed] });
+                }
+            } catch (err) {
+                console.error(`Failed to log alt account:`, err.message);
+            }
+        }
+        
+        // MASS MENTION ALERTS
+        if (hasMassMentions(message) && MOD_LOG_CHANNEL_ID) {
+            try {
+                const logChannel = await message.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+                if (logChannel) {
+                    massSpamWarnings.set(message.author.id, (massSpamWarnings.get(message.author.id) || 0) + 1);
+                    
+                    const mentionEmbed = new EmbedBuilder()
+                        .setColor(0xFFD700)
+                        .setTitle('📢 Mass Mention Alert')
+                        .addFields(
+                            { name: '👤 User', value: `${message.author.tag} (${message.author.id})`, inline: true },
+                            { name: '#️⃣ Channel', value: `<#${message.channelId}>`, inline: true },
+                            { name: '⚠️ Warnings', value: `${massSpamWarnings.get(message.author.id)}`, inline: true },
+                            { name: '💬 Message', value: message.content.substring(0, 256), inline: false }
+                        )
+                        .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [mentionEmbed] });
+                }
+            } catch (err) {
+                console.error(`Failed to log mass mentions:`, err.message);
+            }
+        }
+        
+        // SUSPICIOUS LINK DETECTION
+        if (hasSuspiciousLinks(message.content) && MOD_LOG_CHANNEL_ID) {
+            try {
+                const logChannel = await message.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+                if (logChannel) {
+                    const linkEmbed = new EmbedBuilder()
+                        .setColor(0xE74C3C)
+                        .setTitle('🔗 Suspicious Link Detected')
+                        .addFields(
+                            { name: '👤 User', value: `${message.author.tag} (${message.author.id})`, inline: false },
+                            { name: '#️⃣ Channel', value: `<#${message.channelId}>`, inline: true },
+                            { name: '💬 Message', value: message.content.substring(0, 256), inline: false }
+                        )
+                        .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [linkEmbed] });
+                }
+            } catch (err) {
+                console.error(`Failed to log suspicious link:`, err.message);
+            }
+        }
+        
+        // CAPS SPAM DETECTION
+        if (isCapsSpam(message.content) && MOD_LOG_CHANNEL_ID) {
+            try {
+                const logChannel = await message.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+                if (logChannel) {
+                    capsSpamWarnings.set(message.author.id, (capsSpamWarnings.get(message.author.id) || 0) + 1);
+                    
+                    const capsEmbed = new EmbedBuilder()
+                        .setColor(0xFFD700)
+                        .setTitle('🔤 CAPS SPAM Detected')
+                        .addFields(
+                            { name: '👤 User', value: `${message.author.tag} (${message.author.id})`, inline: true },
+                            { name: '#️⃣ Channel', value: `<#${message.channelId}>`, inline: true },
+                            { name: '⚠️ Warnings', value: `${capsSpamWarnings.get(message.author.id)}`, inline: true },
+                            { name: '💬 Message', value: message.content, inline: false }
+                        )
+                        .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [capsEmbed] });
+                }
+            } catch (err) {
+                console.error(`Failed to log caps spam:`, err.message);
+            }
+        }
+        
+        // REPEATED MESSAGE DETECTION (Spam)
+        const userMsgs = userHistory.filter(m => Date.now() - m.timestamp < 10000); // Last 10 seconds
+        if (userMsgs.length >= 3 && MOD_LOG_CHANNEL_ID) {
+            const isDuplicate = userMsgs.some(m => m.content === message.content);
+            if (isDuplicate) {
+                try {
+                    const logChannel = await message.guild.channels.fetch(MOD_LOG_CHANNEL_ID);
+                    if (logChannel) {
+                        const spamEmbed = new EmbedBuilder()
+                            .setColor(0xFF0000)
+                            .setTitle('🚨 Repeated Message Spam')
+                            .addFields(
+                                { name: '👤 User', value: `${message.author.tag} (${message.author.id})`, inline: true },
+                                { name: '#️⃣ Channel', value: `<#${message.channelId}>`, inline: true },
+                                { name: '📊 Messages in 10s', value: `${userMsgs.length}`, inline: true },
+                                { name: '💬 Message', value: message.content.substring(0, 256), inline: false }
+                            )
+                            .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                            .setTimestamp();
+                        
+                        await logChannel.send({ embeds: [spamEmbed] });
+                    }
+                } catch (err) {
+                    console.error(`Failed to log repeated spam:`, err.message);
+                }
+            }
+        }
+    }
 });
 
 // Track processed messages to prevent duplicates
@@ -1956,6 +2605,62 @@ client.on('messageCreate', async (message) => {
         const isAdmin = message.member?.permissions.has('Administrator') || 
                         message.guild.ownerId === message.author.id;
         
+        // ============ POST VERIFICATION BUTTON ============
+        if (message.content.toLowerCase() === '!postverifybutton' || message.content.toLowerCase() === '!postverify') {
+            if (!isAdmin) return message.reply('❌ Only server admins can use this command.');
+            
+            try {
+                const verifyEmbed = new EmbedBuilder()
+                    .setTitle('🔞 Welcome to Forest Park Hangout – 18+ Verification Required')
+                    .setDescription('**This is an 18+ community.** To keep our community safe and friendly, all visitors must complete age verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
+                    .setColor(0x87CEEB)
+                    .addFields(
+                        { name: '🔐 Part 1 - Identity & Age Verification:', value: 
+                            '1. What is your birthdate? (MM/DD/YYYY)\n' +
+                            '2. How old will you be on your next birthday?\n' +
+                            '3. List any vore-related servers you are currently in\n' +
+                            '4. Why did you decide to join Forest Park Hangout?\n' +
+                            '5. Quote 3 rules & explain them in your own words\n' +
+                            '6. **Were you invited by a friend? If yes, who?**'
+                        },
+                        { name: '🔐 Part 2 - About You:', value: 
+                            '7. How did you find this server?\n' +
+                            '8. What timezone are you in?\n' +
+                            '9. Have you been banned from any Discord servers?\n' +
+                            '10. Do you have any alt Discord accounts?\n' +
+                            '11. (Optional) What does vore mean to you?'
+                        },
+                        { name: '🔐 Part 3 - Roblox & Final Questions:', value: 
+                            '12. What is your Roblox username?\n' +
+                            '13. Have you played Forest Park Hangout before?\n' +
+                            '14. Are you comfortable following all server rules?\n' +
+                            '15. What experience are you hoping to have?\n' +
+                            '16. Anything else you want staff to know?'
+                        },
+                        { name: '👥 Invited by a Friend?', value: 'If you were invited by a friend, please let us know who invited you!' },
+                        { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
+                        { name: '🚨 Note', value: 'If your answers don\'t match or you appear to be under 18, your verification will be denied.\n\nIf you need help, contact staff.' }
+                    )
+                    .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' });
+                
+                const verifyButton = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('start_manual_verification')
+                            .setLabel('📝 Start 18+ Verification')
+                            .setStyle(ButtonStyle.Success)
+                    );
+                
+                await message.channel.send({ embeds: [verifyEmbed], components: [verifyButton] });
+                await message.reply('✅ **Verification button posted!** Users can now click it to start verification.');
+                console.log(`✓ Verification button posted to #${message.channel.name} by ${message.author.tag}`);
+            } catch (err) {
+                console.error('Failed to post verification button:', err);
+                await message.reply(`❌ Failed to post verification button: ${err.message}`);
+            }
+            return;
+        }
+        
         // ============ HELP COMMAND ============
         if (message.content.toLowerCase() === '!help' || message.content.toLowerCase() === '!commands') {
             const helpEmbed = new EmbedBuilder()
@@ -1983,6 +2688,7 @@ client.on('messageCreate', async (message) => {
                     },
                     { name: '👑 Admin Only', value: 
                         '`!setupserver` - Setup server channels/roles\n' +
+                        '`!postverifybutton` - Post verification button in current channel\n' +
                         '`!pingroles` - Post/update ping roles message\n' +
                         '`!shutdown` - Emergency lockdown\n' +
                         '`!restore` - Restore from lockdown'
