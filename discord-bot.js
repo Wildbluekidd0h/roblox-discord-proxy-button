@@ -1147,20 +1147,15 @@ app.post('/api/group/accept-all-verified', async (req, res) => {
 async function setupServer(guild) {
     const results = { roles: {}, channels: {}, categories: {} };
     
-    console.log('🚀 Starting server setup...');
+    console.log('🚀 Starting YouTuber server setup...');
     
     // ========== CREATE ROLES (bottom to top order) ==========
     const rolesToCreate = [
         { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
         { name: '🌟 Boosters', color: '#f47fff', hoist: true },
         { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
-        { name: '🔴 Banned from Game', color: '#ff0000', hoist: false },
         { name: '⚠️ Warned', color: '#ffcc00', hoist: false },
         { name: '🔇 Muted', color: '#808080', hoist: false },
-        { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
-        { name: '🎮 Verified Player', color: '#2ecc71', hoist: true },
-        { name: '✅ Verified', color: '#3498db', hoist: true },
-        { name: '⏳ Unverified', color: '#95a5a6', hoist: true },
         { name: '──────────────', color: '#2f3136', hoist: false }, // Divider
         { name: '🎉 Event Team', color: '#e91e63', hoist: true },
         { name: '🛡️ Moderator', color: '#e67e22', hoist: true },
@@ -1191,59 +1186,60 @@ async function setupServer(guild) {
     
     // Get role references for permissions
     const everyoneRole = guild.roles.everyone;
-    const verifiedRole = guild.roles.cache.find(r => r.name === '✅ Verified');
-    const unverifiedRole = guild.roles.cache.find(r => r.name === '⏳ Unverified');
     const staffRole = guild.roles.cache.find(r => r.name === '🛡️ Moderator');
     const adminRole = guild.roles.cache.find(r => r.name === '⚔️ Admin');
     
     // ========== CREATE CATEGORIES AND CHANNELS ==========
     const serverStructure = [
         {
-            name: '📢 INFORMATION',
+            name: '📢 WELCOME & INFO',
             channels: [
                 { name: '📜・rules', type: 0, topic: 'Server rules and guidelines', isRulesChannel: true },
-                { name: '📣・announcements', type: 0, topic: 'Important server announcements' },
-                { name: '🎉・giveaways', type: 0, topic: 'Server giveaways and events' },
-                { name: '📝・changelog', type: 0, topic: 'Updates and changes to the server' },
-                { name: '🔗・socials', type: 0, topic: 'Our social media and links' },
+                { name: '📣・announcements', type: 0, topic: 'Important announcements and news' },
+                { name: '❓・faq', type: 0, topic: 'Frequently asked questions' },
+                { name: '🔗・socials', type: 0, topic: 'Social media and links' },
             ]
         },
         {
-            name: '🔐 VERIFICATION',
+            name: '💬 GENERAL',
             channels: [
-                { name: '❓・how-to-verify', type: 0, topic: 'Instructions on how to verify your account', isVerifyChannel: true },
-                { name: '✅・verify-here', type: 0, topic: 'Click the button to start verification' },
+                { name: '👋・introductions', type: 0, topic: 'Introduce yourself!' },
+                { name: '💭・general', type: 0, topic: 'General chat' },
+                { name: '😂・memes', type: 0, topic: 'Memes and funny stuff' },
+                { name: '🎮・off-topic', type: 0, topic: 'Off-topic discussion' },
             ]
         },
         {
-            name: '💬 COMMUNITY',
-            verifiedOnly: true,
+            name: '📺 CONTENT',
             channels: [
-                { name: '👋・introductions', type: 0, topic: 'Introduce yourself to the community!' },
-                { name: '💭・general', type: 0, topic: 'General chat for everyone' },
-                { name: '🎮・gaming', type: 0, topic: 'Talk about games' },
-                { name: '🖼️・media', type: 0, topic: 'Share images, videos, and memes' },
-                { name: '🤖・bot-commands', type: 0, topic: 'Use bot commands here' },
+                { name: '🎬・content-discussion', type: 0, topic: 'Discuss content and ideas' },
+                { name: '🎥・clips', type: 0, topic: 'Share clips and highlights' },
+                { name: '🎨・fan-art', type: 0, topic: 'Share fan art and creations' },
+                { name: '📸・media', type: 0, topic: 'Share images and videos' },
             ]
         },
         {
-            name: '🎮 ROBLOX',
-            verifiedOnly: true,
+            name: '💡 FEEDBACK',
             channels: [
-                { name: '🏠・forest-park-chat', type: 0, topic: 'Chat about Forest Park Hangout' },
-                { name: '📸・screenshots', type: 0, topic: 'Share your in-game screenshots' },
-                { name: '💡・suggestions', type: 0, topic: 'Suggest features for the game' },
-                { name: '🐛・bug-reports', type: 0, topic: 'Report bugs in the game' },
+                { name: '💬・suggestions', type: 0, topic: 'Suggest ideas and improvements' },
+                { name: '🐛・bug-reports', type: 0, topic: 'Report bugs and issues' },
+                { name: '⭐・testimonials', type: 0, topic: 'Share your feedback' },
             ]
         },
         {
-            name: '🔊 VOICE CHANNELS',
-            verifiedOnly: true,
+            name: '🎙️ VOICE CHANNELS',
             channels: [
                 { name: '🎙️ General Voice', type: 2 },
                 { name: '🎮 Gaming', type: 2 },
                 { name: '🎵 Music', type: 2 },
-                { name: '🔒 Private (2 max)', type: 2, userLimit: 2 },
+                { name: '🎤 AMA', type: 2 },
+            ]
+        },
+        {
+            name: '🎯 ROLES & TAGS',
+            channels: [
+                { name: '🏷️・self-roles', type: 0, topic: 'Assign yourself roles here' },
+                { name: '📍・ping-roles', type: 0, topic: 'Get notified for specific topics' },
             ]
         },
         {
@@ -1251,8 +1247,7 @@ async function setupServer(guild) {
             staffOnly: true,
             channels: [
                 { name: '📋・staff-chat', type: 0, topic: 'Staff discussion' },
-                { name: '📝・verification-logs', type: 0, topic: 'Verification request logs', isLogChannel: true },
-                { name: '🔨・mod-logs', type: 0, topic: 'Moderation action logs' },
+                { name: '🔨・mod-logs', type: 0, topic: 'Moderation logs' },
                 { name: '📊・staff-commands', type: 0, topic: 'Bot commands for staff' },
                 { name: '🎙️ Staff Voice', type: 2 },
             ]
@@ -1262,7 +1257,6 @@ async function setupServer(guild) {
             adminOnly: true,
             channels: [
                 { name: '🔐・admin-chat', type: 0, topic: 'Admin only discussion' },
-                { name: '📜・audit-logs', type: 0, topic: 'Server audit logs' },
                 { name: '🤖・bot-config', type: 0, topic: 'Bot configuration' },
             ]
         }
@@ -1284,11 +1278,9 @@ async function setupServer(guild) {
                     if (adminRole) permissionOverwrites.push({ id: adminRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory', 'ManageMessages'] });
                 } else if (category.adminOnly && adminRole) {
                     permissionOverwrites.push({ id: adminRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory', 'ManageMessages'] });
-                } else if (category.verifiedOnly && verifiedRole) {
-                    permissionOverwrites.push({ id: verifiedRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'] });
                 } else {
-                    // Public category (like INFORMATION and VERIFICATION)
-                    permissionOverwrites[0] = { id: everyoneRole.id, allow: ['ViewChannel', 'ReadMessageHistory'], deny: ['SendMessages'] };
+                    // Public category - everyone can see and message
+                    permissionOverwrites[0] = { id: everyoneRole.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'] };
                 }
                 
                 cat = await guild.channels.create({
@@ -1366,64 +1358,50 @@ async function setupServer(guild) {
             const hasRules = existingMessages.some(m => 
                 m.author.id === client.user.id && 
                 m.embeds.length > 0 && 
-                m.embeds[0].title?.includes('PARK RULES')
+                m.embeds[0].title?.includes('COMMUNITY RULES')
             );
             
             if (hasRules) {
                 console.log('⏭️ Rules already posted, skipping');
             } else {
                 const rulesEmbed = new EmbedBuilder()
-                    .setTitle('🌲 PARK RULES 🌲')
-                    .setColor(0x2D5A27)
-                    .setDescription(
-                        '```\n' +
-                        '╔══════════════════════════════════════╗\n' +
-                        '║     FOREST PARK HANGOUT • 18+        ║\n' +
-                        '╚══════════════════════════════════════╝\n' +
-                        '```\n' +
-                        'Welcome! Please read and follow all rules.'
-                    )
+                    .setTitle('📜 COMMUNITY RULES')
+                    .setColor(0x2ecc71)
+                    .setDescription('Welcome to our community! Please read and follow all rules to keep this server fun and welcoming for everyone.')
                     .addFields(
-                        { name: '───────── AGE & ENTRY ─────────', value: 
+                        { name: '✅ DO THIS', value: 
                             '```\n' +
-                            '1. Must be 18+ to join\n' +
-                            '2. No lying about your age\n' +
-                            '3. Complete verification to access server\n' +
+                            '1. Be respectful and kind to everyone\n' +
+                            '2. Keep conversations relevant to channels\n' +
+                            '3. Report problems to staff\n' +
+                            '4. Have fun and be yourself!\n' +
                             '```'
                         },
-                        { name: '───────── BEHAVIOR ─────────', value: 
+                        { name: '❌ DO NOT DO THIS', value: 
                             '```\n' +
-                            '4. Be respectful to everyone\n' +
-                            '5. No harassment or bullying\n' +
-                            '6. No spam or flooding\n' +
-                            '7. Keep drama out of public channels\n' +
-                            '8. English only in public channels\n' +
+                            '1. No harassment, hate speech, or bullying\n' +
+                            '2. No spam, flooding, or self-promotion\n' +
+                            '3. No sharing personal information\n' +
+                            '4. No NSFW content\n' +
+                            '5. No arguments or drama\n' +
                             '```'
                         },
-                        { name: '───────── SAFETY ─────────', value: 
+                        { name: '🎮 VOICE CHANNELS', value: 
                             '```\n' +
-                            '9.  No sharing personal info\n' +
-                            '10. No doxxing or threats\n' +
-                            '11. No unsolicited DMs\n' +
-                            '12. Report issues to staff\n' +
+                            '1. Keep voice respectful and fun\n' +
+                            '2. Use mute if you\'re in a noisy area\n' +
+                            '3. No screaming or ear-rape\n' +
+                            '4. No interrupting conversations\n' +
                             '```'
                         },
-                        { name: '───────── ROBLOX ─────────', value: 
+                        { name: '⚠️ CONSEQUENCES', value: 
                             '```\n' +
-                            '13. Verify your Roblox account\n' +
-                            '14. No exploiting or hacking\n' +
-                            '15. In-game rules apply here too\n' +
-                            '```'
-                        },
-                        { name: '───────── MODERATION ─────────', value: 
-                            '```\n' +
-                            '16. Staff decisions are final\n' +
-                            '17. No loopholes or rule-lawyering\n' +
-                            '18. No alt accounts to evade bans\n' +
+                            'Warnings → Mute → Kick → Ban\n' +
+                            'Staff make final decisions\n' +
                             '```'
                         }
                     )
-                    .setFooter({ text: '⚠️ Breaking rules = warn → mute → kick → ban' })
+                    .setFooter({ text: '💙 Thanks for being part of our community!' })
                     .setTimestamp();
                 
                 await rulesChannel.send({ embeds: [rulesEmbed] });
@@ -1434,7 +1412,7 @@ async function setupServer(guild) {
         }
     }
     
-    // ========== POST VERIFICATION INSTRUCTIONS ==========
+    // ========== RETURN RESULTS ==========
     if (results.verifyChannelId) {
         try {
             const verifyChannel = await guild.channels.fetch(results.verifyChannelId);
@@ -1450,62 +1428,47 @@ async function setupServer(guild) {
             if (hasVerify) {
                 console.log('⏭️ Verification instructions already posted, skipping');
             } else {
-                const verifyEmbed = new EmbedBuilder()
-                    .setTitle('🔞 Welcome to Forest Park Hangout – 18+ Verification Required')
-                    .setDescription('**This is an 18+ community.** To keep our community safe and friendly, all visitors must complete age verification before accessing the full server.\n\n**🛡️ Please answer all the following questions honestly and completely.**')
-                    .setColor(0x87CEEB)
+                const welcomeEmbed = new EmbedBuilder()
+                    .setTitle('👋 Welcome to Our Community!')
+                    .setDescription('Thanks for joining! Check out the other channels to get started.')
+                    .setColor(0x2ecc71)
                     .addFields(
-                        { name: '🔐 Part 1 - Identity & Age Verification:', value: 
-                            '1. What is your birthdate? (MM/DD/YYYY)\n' +
-                            '2. How old will you be on your next birthday?\n' +
-                            '3. List any vore-related servers you are currently in\n' +
-                            '4. Why did you decide to join Forest Park Hangout?\n' +
-                            '5. Quote 3 rules & explain them in your own words\n' +
-                            '6. **Were you invited by a friend? If yes, who?**'
+                        { name: '📜 Read the Rules', value: 
+                            'Make sure to read the rules to keep our community safe and fun for everyone.'
                         },
-                        { name: '🔐 Part 2 - About You:', value: 
-                            '7. How did you find this server?\n' +
-                            '8. What timezone are you in?\n' +
-                            '9. Have you been banned from any Discord servers?\n' +
-                            '10. Do you have any alt Discord accounts?\n' +
-                            '11. (Optional) What does vore mean to you?'
+                        { name: '👋 Introduce Yourself', value: 
+                            'Say hi in #introductions! We\'d love to know about you.'
                         },
-                        { name: '🔐 Part 3 - Roblox & Final Questions:', value: 
-                            '12. What is your Roblox username?\n' +
-                            '13. Have you played Forest Park Hangout before?\n' +
-                            '14. Are you comfortable following all server rules?\n' +
-                            '15. What experience are you hoping to have?\n' +
-                            '16. Anything else you want staff to know?'
+                        { name: '💭 Join the Chat', value: 
+                            'Chat with the community in #general and other channels.'
                         },
-                        { name: '👥 Invited by a Friend?', value: 'If you were invited by a friend, please let us know who invited you!' },
-                        { name: '🔒 Privacy', value: 'Only staff can see your answers — your privacy is respected.' },
-                        { name: '🚨 Note', value: 'If your answers don\'t match or you appear to be under 18, your verification will be denied.\n\nIf you need help, contact staff.' }
+                        { name: '🎤 Join Voice Channels', value: 
+                            'Hang out with us in the voice channels whenever you\'re available!'
+                        },
+                        { name: '🎯 Assign Yourself Roles', value: 
+                            'Head to #self-roles to get notification roles and tags.'
+                        }
                     )
-                    .setFooter({ text: 'Thanks for helping us keep Forest Park Hangout safe and welcoming! 🌿' });
+                    .setFooter({ text: 'Hope you have an amazing time here! 💙' })
+                    .setTimestamp();
                 
-                const verifyButton = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setCustomId('start_manual_verification')
-                            .setLabel('📝 Start 18+ Verification')
-                            .setStyle(ButtonStyle.Success)
-                    );
-                
-                await verifyChannel.send({ embeds: [verifyEmbed], components: [verifyButton] });
-                console.log('✅ Posted verification instructions to verify channel');
+                await rulesChannel.send({ embeds: [welcomeEmbed] });
+                console.log('✅ Posted welcome message');
             }
         } catch (err) {
-            console.log(`❌ Failed to post verification instructions: ${err.message}`);
+            console.log(`❌ Failed to post welcome message: ${err.message}`);
         }
     }
     
-    console.log('🎉 Server setup complete!');
-    console.log('\n📋 IMPORTANT IDs TO UPDATE IN CODE:');
-    console.log(`AUTO_ROLE_ID (Unverified): ${results.roles['⏳ Unverified'] || 'Not created'}`);
-    console.log(`VERIFIED_MEMBER_ROLE_ID: ${results.roles['✅ Verified'] || 'Not created'}`);
-    console.log(`STAFF_ROLE_ID: ${results.roles['🛡️ Moderator'] || 'Not created'}`);
-    console.log(`HOW_TO_VERIFY_CHANNEL_ID: ${results.verifyChannelId || 'Not created'}`);
-    console.log(`VERIFICATION_LOG_CHANNEL_ID: ${results.logChannelId || 'Not created'}`);
+    console.log('🎉 YouTuber Server Setup Complete!');
+    console.log('\n📊 CHANNELS CREATED:');
+    Object.entries(results.channels).forEach(([name, id]) => {
+        console.log(`  • ${name}: ${id}`);
+    });
+    console.log('\n👥 ROLES CREATED:');
+    Object.entries(results.roles).forEach(([name, id]) => {
+        console.log(`  • ${name}: ${id}`);
+    });
     
     return results;
 }
@@ -2564,24 +2527,34 @@ client.on('messageCreate', async (message) => {
             const results = await setupServer(message.guild);
             
             const embed = new EmbedBuilder()
-                .setTitle('🎉 Server Setup Complete!')
+                .setTitle('🎉 YouTuber Server Setup Complete!')
                 .setColor(0x2ecc71)
-                .setDescription('All channels and roles have been created!')
+                .setDescription('All channels and roles have been created for your server!')
                 .addFields(
-                    { name: '📋 Important IDs', value: 
-                        `**Unverified Role:** \`${results.roles['⏳ Unverified'] || 'N/A'}\`\n` +
-                        `**Verified Role:** \`${results.roles['✅ Verified'] || 'N/A'}\`\n` +
-                        `**Moderator Role:** \`${results.roles['🛡️ Moderator'] || 'N/A'}\`\n` +
-                        `**Verify Channel:** \`${results.verifyChannelId || 'N/A'}\`\n` +
-                        `**Log Channel:** \`${results.logChannelId || 'N/A'}\``
+                    { name: '👑 Key Roles', value: 
+                        `**Owner:** \`${results.roles['👑 Owner'] || 'N/A'}\`\n` +
+                        `**Admin:** \`${results.roles['⚔️ Admin'] || 'N/A'}\`\n` +
+                        `**Moderator:** \`${results.roles['🛡️ Moderator'] || 'N/A'}\n` +
+                        `**Event Team:** \`${results.roles['🎉 Event Team'] || 'N/A'}\``
                     },
-                    { name: '⚠️ Next Steps', value: 
-                        '1. Update the role/channel IDs in your code\n' +
-                        '2. Set environment variables on Render\n' +
-                        '3. Restart the bot\n' +
-                        '4. Run `!postverify` in the verify channel'
+                    { name: '📂 Categories Created', value: 
+                        '✅ Welcome & Info\n' +
+                        '✅ General\n' +
+                        '✅ Content\n' +
+                        '✅ Feedback\n' +
+                        '✅ Voice Channels\n' +
+                        '✅ Roles & Tags\n' +
+                        '✅ Staff Area\n' +
+                        '✅ Admin'
+                    },
+                    { name: '🚀 Next Steps', value: 
+                        '1. Review the rules in #rules\n' +
+                        '2. Add custom emotes for roles\n' +
+                        '3. Use `!help` to see all bot commands\n' +
+                        '4. Invite your friends!'
                     }
                 )
+                .setFooter({ text: 'Your YouTuber community server is ready to go!' })
                 .setTimestamp();
             
             await statusMsg.edit({ content: null, embeds: [embed] });
