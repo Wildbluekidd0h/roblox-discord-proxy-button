@@ -5,7 +5,7 @@ local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Configuration
-local WEBHOOK_PROXY_URL = "https://discord.com/api/webhooks/1445642143237673062/qWYZd0_u21JcCdNVKXanh_OOFvTTObsiCkGGYwmQVEKrBEIOj5fgJDcAfKr1PbqzulbF" -- Replace with your proxy server URL
+local WEBHOOK_PROXY_URL = "https://discord.com/oauth2/authorize?client_id=1518452619180507365&permissions=8&integration_type=0&scope=bot" -- Replace with your proxy server URL
 -- Example: "https://your-app.herokuapp.com/discord-webhook"
 
 -- Create RemoteEvent if it doesn't exist
